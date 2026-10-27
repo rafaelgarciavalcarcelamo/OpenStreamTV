@@ -69,6 +69,11 @@ class SettingsActivity : ComponentActivity() {
             setTextColor(getColor(R.color.text_primary)); isChecked = preferences.refreshSourcesOnLaunch; isFocusable = true
         }
         root.addView(refreshOnLaunch, rowParams(58))
+        val showVpnWarning = Switch(this).apply {
+            text = "Avisar arriba cuando no haya una VPN activa"
+            setTextColor(getColor(R.color.text_primary)); isChecked = preferences.showVpnWarning; isFocusable = true
+        }
+        root.addView(showVpnWarning, rowParams(58))
 
         root.addView(sectionTitle("Portada y canales"))
         root.addView(action("Personalizar canales y su orden").apply {
@@ -227,6 +232,7 @@ class SettingsActivity : ComponentActivity() {
                 preferences.startupMode = startupModes[startupMode.selectedItemPosition]
                 preferences.confirmExit = confirmExit.isChecked
                 preferences.refreshSourcesOnLaunch = refreshOnLaunch.isChecked
+                preferences.showVpnWarning = showVpnWarning.isChecked
                 preferences.smartHomeOrder = smartHomeOrder.isChecked
                 preferences.homeChannelCount = homeCountValues[homeCount.selectedItemPosition]
                 preferences.customMinMs = minSeconds * 1000

@@ -5,7 +5,12 @@ import android.app.AlertDialog
 import android.content.Intent
 import android.graphics.Typeface
 import android.net.Uri
+import android.net.ConnectivityManager
+import android.net.Network
+import android.net.NetworkCapabilities
+import android.net.NetworkRequest
 import android.os.Bundle
+import android.provider.Settings
 import android.text.InputType
 import android.text.TextUtils
 import android.view.Gravity
@@ -44,6 +49,7 @@ class MainActivity : ComponentActivity() {
     private lateinit var heroTitle: TextView
     private lateinit var watchSubtitle: TextView
     private lateinit var searchButton: Button
+    private lateinit var vpnWarning: Button
     private lateinit var homeNav: Button
     private lateinit var channelsNav: Button
     private lateinit var favoritesNav: Button
@@ -67,6 +73,12 @@ class MainActivity : ComponentActivity() {
     private var query = ""
     private var guideReleasedForMemory = false
     private var showingCatalog = false
+    private var networkCallbackRegistered = false
+    private val vpnNetworkCallback = object : ConnectivityManager.NetworkCallback() {
+        override fun onAvailable(network: Network) = updateVpnWarningSoon()
+        override fun onLost(network: Network) = updateVpnWarningSoon()
+        override fun onCapabilitiesChanged(network: Network, capabilities: NetworkCapabilities) = updateVpnWarningSoon()
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -93,6 +105,8 @@ class MainActivity : ComponentActivity() {
 
     override fun onStart() {
         super.onStart()
+        registerVpnMonitor()
+        refreshVpnWarning()
         refreshWatchButton()
         if (::homeLiveAdapter.isInitialized) refreshHome()
         if (::channelAdapter.isInitialized) refreshChannels()
@@ -100,6 +114,11 @@ class MainActivity : ComponentActivity() {
             guideReleasedForMemory = false
             repository.loadSavedEpgAsync { restored -> runOnUiThread { programs = restored; refresh() } }
         }
+    }
+
+    override fun onStop() {
+        unregisterVpnMonitor()
+        super.onStop()
     }
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
@@ -136,6 +155,17 @@ class MainActivity : ComponentActivity() {
         brand.addView(brandName, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(if (compact) 24 else 28)))
         brand.addView(label("TELEVISIÓN EN DIRECTO", 11f, secondary = true).apply { letterSpacing = .08f }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(if (compact) 16 else 20)))
         toolbar.addView(brand, LinearLayout.LayoutParams(0, dp(if (compact) 42 else 52), 1f))
+        vpnWarning = action("⚠  VPN no detectada").apply {
+            textSize = if (compact) 12f else 13f
+            background = getDrawable(R.drawable.vpn_warning)
+            setTextColor(getColorStateList(R.color.vpn_warning_text))
+            visibility = View.GONE
+            contentDescription = "VPN no detectada. Pulsa OK para abrir los ajustes de VPN"
+            setOnClickListener { openVpnSettings() }
+        }
+        toolbar.addView(vpnWarning, LinearLayout.LayoutParams(dp(if (compact) 210 else 238), dp(if (compact) 36 else 42)).apply {
+            rightMargin = dp(14)
+        })
         toolbar.addView(TextClock(this).apply {
             format24Hour = "EEE d MMM  ·  HH:mm"
             format12Hour = "EEE d MMM  ·  h:mm a"
@@ -440,6 +470,47 @@ class MainActivity : ComponentActivity() {
             featured != null -> "En directo  ·  ${featured.group}"
             else -> "Añade tu lista y empieza a ver canales"
         }
+    }
+
+    private fun refreshVpnWarning() {
+        if (!::vpnWarning.isInitialized) return
+        vpnWarning.visibility = if (preferences.showVpnWarning && !isVpnActive()) View.VISIBLE else View.GONE
+    }
+
+    private fun isVpnActive(): Boolean {
+        val connectivity = getSystemService(ConnectivityManager::class.java) ?: return false
+        val network = connectivity.activeNetwork ?: return false
+        return connectivity.getNetworkCapabilities(network)?.hasTransport(NetworkCapabilities.TRANSPORT_VPN) == true
+    }
+
+    private fun registerVpnMonitor() {
+        if (networkCallbackRegistered) return
+        val connectivity = getSystemService(ConnectivityManager::class.java) ?: return
+        runCatching {
+            connectivity.registerNetworkCallback(
+                NetworkRequest.Builder().addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET).build(),
+                vpnNetworkCallback,
+            )
+            networkCallbackRegistered = true
+        }
+    }
+
+    private fun unregisterVpnMonitor() {
+        if (!networkCallbackRegistered) return
+        val connectivity = getSystemService(ConnectivityManager::class.java) ?: return
+        runCatching { connectivity.unregisterNetworkCallback(vpnNetworkCallback) }
+        networkCallbackRegistered = false
+    }
+
+    private fun updateVpnWarningSoon() = runOnUiThread { refreshVpnWarning() }
+
+    private fun openVpnSettings() {
+        val intent = listOf(Settings.ACTION_VPN_SETTINGS, Settings.ACTION_WIRELESS_SETTINGS, Settings.ACTION_SETTINGS)
+            .asSequence()
+            .map(::Intent)
+            .firstOrNull { it.resolveActivity(packageManager) != null }
+        if (intent != null) startActivity(intent)
+        else Toast.makeText(this, "Abre la aplicación de tu VPN para conectarla", Toast.LENGTH_LONG).show()
     }
 
     private fun refreshChannels() {

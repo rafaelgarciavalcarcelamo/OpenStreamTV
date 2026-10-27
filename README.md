@@ -8,6 +8,7 @@ Reproductor IPTV de código abierto para Android TV y Amazon Fire TV, creado des
 - Orden inteligente de Inicio: canales fijados, favoritos y más vistos, con destacados de LaLiga, DAZN, Champions y F1.
 - Pantalla de personalización para añadir, quitar, subir y bajar canales; el orden elegido también se aplica al catálogo y al cambio de canal.
 - Acceso superior a Inicio, Canales, Favoritos, Buscar, Mis listas y Ajustes; «Reproducir» abre el último canal visto.
+- Aviso superior discreto cuando Android no detecta una VPN activa; abre los ajustes de VPN y puede desactivarse desde Ajustes.
 - Catálogo de dos paneles optimizado para mando: categorías y canales con el programa actual cuando hay guía.
 - Categorías y canales en dos paneles con foco visible, número de canal, programa actual y una pantalla vacía con instrucciones sencillas.
 - Guía rápida sobre la imagen con OK o MENÚ, cambio de canal con arriba/abajo y selección por número cuando el mando tiene teclado numérico.

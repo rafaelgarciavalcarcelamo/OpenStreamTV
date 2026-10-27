@@ -47,6 +47,9 @@ class Preferences(context: Context) {
     var refreshSourcesOnLaunch: Boolean
         get() = prefs.getBoolean("refresh_sources_on_launch", true)
         set(value) = prefs.edit().putBoolean("refresh_sources_on_launch", value).apply()
+    var showVpnWarning: Boolean
+        get() = prefs.getBoolean("show_vpn_warning", true)
+        set(value) = prefs.edit().putBoolean("show_vpn_warning", value).apply()
     var epgUrl: String
         get() = prefs.getString("epg_url", "") ?: ""
         set(value) = prefs.edit().putString("epg_url", value).apply()
