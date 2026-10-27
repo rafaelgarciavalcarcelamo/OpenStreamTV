@@ -26,6 +26,7 @@
         </receiver>
 
         <activity android:name=".ui.SettingsActivity" />
+        <activity android:name=".ui.PersonalizationActivity" />
         <activity
             android:name=".ui.PlayerActivity"
             android:configChanges="keyboard|keyboardHidden|orientation|screenSize"

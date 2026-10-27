@@ -5,6 +5,8 @@ Reproductor IPTV de código abierto para Android TV y Amazon Fire TV, creado des
 ## Funciones incluidas
 
 - Portada de estilo cinematográfico para televisor: canal destacado, filas horizontales de canales y categorías, logos y foco claro al usar el mando.
+- Orden inteligente de Inicio: canales fijados, favoritos y más vistos, con destacados de LaLiga, DAZN, Champions y F1.
+- Pantalla de personalización para añadir, quitar, subir y bajar canales; el orden elegido también se aplica al catálogo y al cambio de canal.
 - Acceso superior a Inicio, Canales, Favoritos, Buscar, Mis listas y Ajustes; «Reproducir» abre el último canal visto.
 - Catálogo de dos paneles optimizado para mando: categorías y canales con el programa actual cuando hay guía.
 - Categorías y canales en dos paneles con foco visible, número de canal, programa actual y una pantalla vacía con instrucciones sencillas.
@@ -14,6 +16,7 @@ Reproductor IPTV de código abierto para Android TV y Amazon Fire TV, creado des
 - Credenciales y catálogo Xtream cifrados con una clave no exportable de Android Keystore.
 - Guía XMLTV por URL, también si llega comprimida con gzip.
 - Búsqueda, grupos y favoritos persistentes (pulsación larga sobre un canal).
+- Historial local de canales reproducidos, reiniciable desde Ajustes y usado para ordenar la portada sin enviar datos fuera del dispositivo.
 - Reproducción en directo con AndroidX Media3/ExoPlayer, HLS y flujos progresivos compatibles.
 - Cambio rápido de canal con arriba/abajo o Channel Up/Down.
 - Perfiles de búfer Rápido, Equilibrado, Estable y Personalizado.

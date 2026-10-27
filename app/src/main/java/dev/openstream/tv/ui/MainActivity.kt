@@ -28,6 +28,7 @@ import dev.openstream.tv.R
 import dev.openstream.tv.data.AppRepository
 import dev.openstream.tv.data.Channel
 import dev.openstream.tv.data.CredentialVault
+import dev.openstream.tv.data.HomeChannelRanker
 import dev.openstream.tv.data.Playlist
 import dev.openstream.tv.data.Preferences
 import dev.openstream.tv.data.Program
@@ -55,10 +56,8 @@ class MainActivity : ComponentActivity() {
     private lateinit var homeScroll: ScrollView
     private lateinit var catalogContent: LinearLayout
     private lateinit var homeEmptyMessage: TextView
-    private lateinit var homeFavoritesSection: LinearLayout
     private lateinit var homeLiveSection: LinearLayout
     private lateinit var homeCategoriesSection: LinearLayout
-    private lateinit var homeFavoritesAdapter: HomeChannelAdapter
     private lateinit var homeLiveAdapter: HomeChannelAdapter
     private lateinit var homeCategoriesAdapter: HomeCategoryAdapter
 
@@ -209,13 +208,12 @@ class MainActivity : ComponentActivity() {
             gravity = Gravity.CENTER
         }
         homeBody.addView(homeEmptyMessage, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(86)))
-        homeFavoritesAdapter = HomeChannelAdapter(::playChannel, ::toggleFavorite)
         homeLiveAdapter = HomeChannelAdapter(::playChannel, ::toggleFavorite)
         homeCategoriesAdapter = HomeCategoryAdapter(::showCatalog)
-        homeFavoritesSection = homeSection("Tus favoritos", homeFavoritesAdapter, "Ver favoritos") { showCatalog("Favoritos") }
-        homeLiveSection = homeSection("Canales en directo", homeLiveAdapter, "Ver todos") { showCatalog("Todos") }
+        homeLiveSection = homeSection("Tus canales · favoritos y más vistos", homeLiveAdapter, "Personalizar") {
+            startActivity(Intent(this, PersonalizationActivity::class.java))
+        }
         homeCategoriesSection = homeSection("Explorar por categorías", homeCategoriesAdapter, "Ver todas") { showCatalog("Todos") }
-        homeBody.addView(homeFavoritesSection)
         homeBody.addView(homeLiveSection)
         homeBody.addView(homeCategoriesSection)
 
@@ -414,14 +412,19 @@ class MainActivity : ComponentActivity() {
     private fun refreshHome() {
         val all = playlist?.channels.orEmpty()
         val favorites = preferences.favorites
-        val favoriteChannels = all.filter { it.id in favorites }.take(24)
-        homeFavoritesAdapter.submit(favoriteChannels, favorites)
-        homeLiveAdapter.submit(all.take(24), favorites)
+        val homeChannels = HomeChannelRanker.rank(
+            channels = all,
+            pinnedIds = preferences.pinnedChannelOrder,
+            favoriteIds = favorites,
+            watchCounts = preferences.watchCounts(),
+            limit = preferences.homeChannelCount,
+            smart = preferences.smartHomeOrder,
+        )
+        homeLiveAdapter.submit(homeChannels, favorites)
         val groups = all.groupingBy(Channel::group).eachCount().toList()
             .sortedBy { it.first.lowercase() }.take(24)
         homeCategoriesAdapter.submit(groups)
         homeEmptyMessage.visibility = if (all.isEmpty()) View.VISIBLE else View.GONE
-        homeFavoritesSection.visibility = if (favoriteChannels.isEmpty()) View.GONE else View.VISIBLE
         homeLiveSection.visibility = if (all.isEmpty()) View.GONE else View.VISIBLE
         homeCategoriesSection.visibility = if (groups.isEmpty()) View.GONE else View.VISIBLE
     }
@@ -441,15 +444,23 @@ class MainActivity : ComponentActivity() {
 
     private fun refreshChannels() {
         val all = playlist?.channels.orEmpty()
+        val orderedAll = HomeChannelRanker.rank(
+            channels = all,
+            pinnedIds = preferences.pinnedChannelOrder,
+            favoriteIds = emptySet(),
+            watchCounts = emptyMap(),
+            limit = all.size.coerceAtLeast(1),
+            smart = false,
+        )
         val byGroup = when (selectedGroup) {
-            "Todos" -> all
-            "Favoritos" -> all.filter { it.id in preferences.favorites }
-            else -> all.filter { it.group == selectedGroup }
+            "Todos" -> orderedAll
+            "Favoritos" -> orderedAll.filter { it.id in preferences.favorites }
+            else -> orderedAll.filter { it.group == selectedGroup }
         }
         val filtered = if (query.isBlank()) byGroup else byGroup.filter {
             it.name.contains(query, true) || it.group.contains(query, true)
         }
-        val numbers = all.mapIndexed { position, channel -> channel.id to position + 1 }.toMap()
+        val numbers = orderedAll.mapIndexed { position, channel -> channel.id to position + 1 }.toMap()
         channelAdapter.submit(filtered, currentPrograms(), preferences.favorites, numbers, preferences.lastChannelId)
         channelContext.text = if (query.isNotBlank()) "${filtered.size} resultados" else "${filtered.size} · $selectedGroup"
         emptyState.text = when {

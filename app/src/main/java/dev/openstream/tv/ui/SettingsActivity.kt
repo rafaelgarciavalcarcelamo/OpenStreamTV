@@ -1,5 +1,6 @@
 package dev.openstream.tv.ui
 
+import android.content.Intent
 import android.os.Bundle
 import android.view.Gravity
 import android.view.ViewGroup
@@ -68,6 +69,30 @@ class SettingsActivity : ComponentActivity() {
             setTextColor(getColor(R.color.text_primary)); isChecked = preferences.refreshSourcesOnLaunch; isFocusable = true
         }
         root.addView(refreshOnLaunch, rowParams(58))
+
+        root.addView(sectionTitle("Portada y canales"))
+        root.addView(action("Personalizar canales y su orden").apply {
+            setOnClickListener { startActivity(Intent(this@SettingsActivity, PersonalizationActivity::class.java)) }
+        }, rowParams(54))
+        val smartHomeOrder = Switch(this).apply {
+            text = "Priorizar favoritos, más vistos y deportes destacados"
+            setTextColor(getColor(R.color.text_primary)); isChecked = preferences.smartHomeOrder; isFocusable = true
+        }
+        root.addView(smartHomeOrder, rowParams(58))
+        val homeCountValues = listOf(12, 24, 36, 48, 60)
+        val homeCount = Spinner(this).apply {
+            adapter = ArrayAdapter(this@SettingsActivity, android.R.layout.simple_spinner_dropdown_item,
+                homeCountValues.map { "$it canales" })
+            setSelection(homeCountValues.indexOf(preferences.homeChannelCount).coerceAtLeast(0))
+            isFocusable = true
+        }
+        root.addView(settingRow("Canales visibles en Inicio", homeCount))
+        root.addView(action("Borrar historial de canales más vistos").apply {
+            setOnClickListener {
+                preferences.clearWatchHistory()
+                Toast.makeText(this@SettingsActivity, "Historial de visualización borrado", Toast.LENGTH_SHORT).show()
+            }
+        }, rowParams(54))
 
         val firstAdvancedIndex = root.childCount
 
@@ -202,6 +227,8 @@ class SettingsActivity : ComponentActivity() {
                 preferences.startupMode = startupModes[startupMode.selectedItemPosition]
                 preferences.confirmExit = confirmExit.isChecked
                 preferences.refreshSourcesOnLaunch = refreshOnLaunch.isChecked
+                preferences.smartHomeOrder = smartHomeOrder.isChecked
+                preferences.homeChannelCount = homeCountValues[homeCount.selectedItemPosition]
                 preferences.customMinMs = minSeconds * 1000
                 preferences.customMaxMs = maxSeconds * 1000
                 preferences.customPlayMs = playControl.value() * 1000

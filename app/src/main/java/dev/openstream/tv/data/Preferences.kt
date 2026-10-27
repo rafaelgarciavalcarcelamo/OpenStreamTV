@@ -1,6 +1,8 @@
 package dev.openstream.tv.data
 
 import android.content.Context
+import org.json.JSONArray
+import org.json.JSONObject
 
 enum class BufferPreset(val label: String, val minMs: Int, val maxMs: Int, val playMs: Int, val rebufferMs: Int) {
     RAPIDO("Rápido", 5_000, 15_000, 900, 1_800),
@@ -117,6 +119,32 @@ class Preferences(context: Context) {
     var favorites: Set<String>
         get() = prefs.getStringSet("favorites", emptySet())?.toSet() ?: emptySet()
         set(value) = prefs.edit().putStringSet("favorites", value).apply()
+    var pinnedChannelOrder: List<String>
+        get() = parseStringList(prefs.getString("pinned_channel_order", "[]"))
+        set(value) = prefs.edit().putString("pinned_channel_order", JSONArray(value.distinct()).toString()).apply()
+    var smartHomeOrder: Boolean
+        get() = prefs.getBoolean("smart_home_order", true)
+        set(value) = prefs.edit().putBoolean("smart_home_order", value).apply()
+    var homeChannelCount: Int
+        get() = prefs.getInt("home_channel_count", 36).coerceIn(12, 60)
+        set(value) = prefs.edit().putInt("home_channel_count", value.coerceIn(12, 60)).apply()
+
+    fun watchCounts(): Map<String, Int> {
+        val json = runCatching { JSONObject(prefs.getString("channel_watch_counts", "{}") ?: "{}") }.getOrNull()
+            ?: return emptyMap()
+        return buildMap {
+            json.keys().forEach { id -> put(id, json.optInt(id).coerceAtLeast(0)) }
+        }
+    }
+
+    fun recordChannelWatched(channelId: String) {
+        val json = runCatching { JSONObject(prefs.getString("channel_watch_counts", "{}") ?: "{}") }
+            .getOrDefault(JSONObject())
+        json.put(channelId, (json.optInt(channelId) + 1).coerceAtMost(1_000_000))
+        prefs.edit().putString("channel_watch_counts", json.toString()).apply()
+    }
+
+    fun clearWatchHistory() = prefs.edit().remove("channel_watch_counts").apply()
 
     var xtreamServer: String
         get() = prefs.getString("xtream_server", "") ?: ""
@@ -148,4 +176,9 @@ class Preferences(context: Context) {
         if (prefs.getBoolean("tv_experience_v2", false)) return
         prefs.edit().putBoolean("tv_experience_v2", true).apply()
     }
+
+    private fun parseStringList(raw: String?): List<String> = runCatching {
+        val json = JSONArray(raw ?: "[]")
+        buildList { for (index in 0 until json.length()) json.optString(index).takeIf(String::isNotBlank)?.let(::add) }
+    }.getOrDefault(emptyList())
 }

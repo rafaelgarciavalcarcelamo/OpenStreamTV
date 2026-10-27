@@ -38,6 +38,7 @@ import dev.openstream.tv.data.AppRepository
 import dev.openstream.tv.data.Channel
 import dev.openstream.tv.data.ChannelStabilityStore
 import dev.openstream.tv.data.DecoderPreference
+import dev.openstream.tv.data.HomeChannelRanker
 import dev.openstream.tv.data.Preferences
 import dev.openstream.tv.data.ResizeMode
 import dev.openstream.tv.player.PlaybackDiagnostics
@@ -140,7 +141,15 @@ class PlayerActivity : ComponentActivity() {
         window.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_FULLSCREEN or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
         preferences = Preferences(this)
         stabilityStore = ChannelStabilityStore(this)
-        channels = AppRepository(this).loadSavedPlaylist()?.channels.orEmpty()
+        val savedChannels = AppRepository(this).loadSavedPlaylist()?.channels.orEmpty()
+        channels = HomeChannelRanker.rank(
+            channels = savedChannels,
+            pinnedIds = preferences.pinnedChannelOrder,
+            favoriteIds = emptySet(),
+            watchCounts = emptyMap(),
+            limit = savedChannels.size.coerceAtLeast(1),
+            smart = false,
+        )
         val channelId = intent.getStringExtra(EXTRA_CHANNEL_ID)
         index = channels.indexOfFirst { it.id == channelId }.coerceAtLeast(0)
         buildUi()
@@ -268,6 +277,7 @@ class PlayerActivity : ComponentActivity() {
                 }
                 override fun onPlaybackStateChanged(playbackState: Int) {
                     if (playbackState == Player.STATE_READY) {
+                        if (!hasBeenReady) channels.getOrNull(index)?.let { preferences.recordChannelWatched(it.id) }
                         bufferingSinceMs = 0
                         cancelRecovery()
                         scheduleStableMark()
