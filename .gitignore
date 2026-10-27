@@ -1,0 +1,13 @@
+.gradle/
+.kotlin/
+.idea/
+local.properties
+**/build/
+*.iml
+*.apk
+*.m3u
+*.m3u8
+*.m3u.gz
+*.xmltv
+*.jks
+*.keystore
