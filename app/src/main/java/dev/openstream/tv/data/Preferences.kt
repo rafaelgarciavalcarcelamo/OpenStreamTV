@@ -18,7 +18,7 @@ enum class DecoderPreference(val label: String) {
 }
 
 enum class StartupMode(val label: String) {
-    LISTADO("Mostrar listado"), ULTIMO_CANAL("Reproducir último canal"), FAVORITOS("Abrir favoritos")
+    LISTADO("Mostrar inicio"), ULTIMO_CANAL("Reproducir último canal"), FAVORITOS("Abrir favoritos")
 }
 
 class Preferences(context: Context) {
@@ -146,8 +146,6 @@ class Preferences(context: Context) {
 
     fun applyTvExperienceDefaults() {
         if (prefs.getBoolean("tv_experience_v2", false)) return
-        val editor = prefs.edit().putBoolean("tv_experience_v2", true)
-        if (startupMode == StartupMode.LISTADO) editor.putString("startup_mode", StartupMode.ULTIMO_CANAL.name)
-        editor.apply()
+        prefs.edit().putBoolean("tv_experience_v2", true).apply()
     }
 }

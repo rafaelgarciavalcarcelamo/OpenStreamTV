@@ -4,8 +4,9 @@ Reproductor IPTV de código abierto para Android TV y Amazon Fire TV, creado des
 
 ## Funciones incluidas
 
+- Portada de estilo cinematográfico para televisor: canal destacado, filas horizontales de canales y categorías, logos y foco claro al usar el mando.
+- Acceso superior a Inicio, Canales, Favoritos, Buscar, Mis listas y Ajustes; «Reproducir» abre el último canal visto.
 - Catálogo de dos paneles optimizado para mando: categorías y canales con el programa actual cuando hay guía.
-- Portada oscura tipo launcher: acceso inmediato a «Seguir viendo», reloj y una fila de accesos a Favoritos, Buscar, Mis listas y Ajustes.
 - Categorías y canales en dos paneles con foco visible, número de canal, programa actual y una pantalla vacía con instrucciones sencillas.
 - Guía rápida sobre la imagen con OK o MENÚ, cambio de canal con arriba/abajo y selección por número cuando el mando tiene teclado numérico.
 - Importación M3U/M3U8 por URL o selector de archivo.
@@ -34,7 +35,7 @@ Reproductor IPTV de código abierto para Android TV y Amazon Fire TV, creado des
 - El panel muestra códecs, decodificadores, resolución, FPS, red, búfer, retraso, frames perdidos y último error.
 - Liberación de la guía EPG cuando Fire TV solicita memoria y restauración asíncrona al volver.
 - Inicio automático opcional al recibir `BOOT_COMPLETED` en Fire TV/Android TV compatibles.
-- Inicio configurable en el listado, favoritos o último canal reproducido.
+- Inicio configurable en la portada, favoritos o último canal reproducido.
 - Actualización silenciosa de lista y EPG al abrir, conservando siempre la copia funcional.
 - Confirmación de salida y memoria del último canal.
 - Perfil recomendado predeterminado: búfer Estable (8 s antes de iniciar, 12 s tras un corte), 15 s de retraso HLS, 1080p, reconexión continua y fallback activo.
