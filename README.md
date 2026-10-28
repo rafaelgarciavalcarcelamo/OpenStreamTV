@@ -68,3 +68,4 @@ Esta versión importa televisión en directo mediante Xtream Codes. No implement
 ## Licencia
 
 Código disponible bajo licencia MIT. Consulta `LICENSE`.
+\n\n---\n\n## Documentación / Documentation\n\nReproductor IPTV open source para Android TV y Amazon Fire TV. Importa M3U/M3U8, Xtream Codes y XMLTV; mantiene favoritos e historial local y usa Media3/ExoPlayer con reconexión, búfer y diagnóstico.\n\n- 🇪🇸 [Documentación en español](docs/es/README.md)\n- 🇬🇧 [Documentation in English](docs/en/README.md)\n
