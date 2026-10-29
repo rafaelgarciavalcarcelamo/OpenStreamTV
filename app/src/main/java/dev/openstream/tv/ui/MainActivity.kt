@@ -2,6 +2,7 @@ package dev.openstream.tv.ui
 
 import android.app.Activity
 import android.app.AlertDialog
+import android.content.ComponentName
 import android.content.Intent
 import android.graphics.Typeface
 import android.net.Uri
@@ -262,8 +263,9 @@ class MainActivity : ComponentActivity() {
         favoritesNav = action("Favoritos").apply { setOnClickListener { showCatalog("Favoritos") } }
         searchButton = action("Buscar").apply { setOnClickListener { showSearchDialog() } }
         val sources = action("Mis listas").apply { setOnClickListener { showSourcesDialog() } }
+        val apps = action("Ver aplicaciones").apply { setOnClickListener { openDeviceLauncher() } }
         val settings = action("Ajustes").apply { setOnClickListener { startActivity(Intent(this@MainActivity, SettingsActivity::class.java)) } }
-        for (button in listOf(homeNav, channelsNav, favoritesNav, searchButton, sources, settings)) {
+        for (button in listOf(homeNav, channelsNav, favoritesNav, searchButton, sources, apps, settings)) {
             dock.addView(button, LinearLayout.LayoutParams(0, dp(if (compact) 40 else 46), 1f).apply {
                 leftMargin = dp(4)
                 rightMargin = dp(4)
@@ -742,6 +744,16 @@ class MainActivity : ComponentActivity() {
     private fun setLoading(loading: Boolean, message: String = "") {
         progress.visibility = if (loading) ProgressBar.VISIBLE else ProgressBar.GONE
         if (loading) status.text = message else refresh()
+    }
+
+    private fun openDeviceLauncher() {
+        val launcher = packageManager.getLaunchIntentForPackage("com.hisight.mslauncher")
+            ?: Intent().setComponent(ComponentName("com.hisight.mslauncher", "com.hisight.mslauncher.MsMainActivity"))
+        runCatching {
+            startActivity(launcher.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED))
+        }.onFailure {
+            startActivity(Intent(Settings.ACTION_APPLICATION_SETTINGS))
+        }
     }
 
     override fun onDestroy() { repository.shutdown(); super.onDestroy() }
