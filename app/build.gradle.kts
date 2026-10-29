@@ -11,8 +11,8 @@ android {
         applicationId = "dev.openstream.tv"
         minSdk = 23
         targetSdk = 36
-        versionCode = 16
-        versionName = "0.11.4"
+        versionCode = 17
+        versionName = "0.11.5"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }

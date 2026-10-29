@@ -747,13 +747,18 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun openDeviceLauncher() {
-        val launcher = packageManager.getLaunchIntentForPackage("com.hisight.mslauncher")
-            ?: Intent().setComponent(ComponentName("com.hisight.mslauncher", "com.hisight.mslauncher.MsMainActivity"))
-        runCatching {
-            startActivity(launcher.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED))
-        }.onFailure {
-            startActivity(Intent(Settings.ACTION_APPLICATION_SETTINGS))
-        }
+        val launcherFlags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED
+        val launcherHome = Intent(Intent.ACTION_MAIN)
+            .addCategory(Intent.CATEGORY_HOME)
+            .setPackage("com.hisight.mslauncher")
+            .addFlags(launcherFlags)
+        val launcherMain = Intent().setComponent(
+            ComponentName("com.hisight.mslauncher", "com.hisight.mslauncher.MsMainActivity"),
+        ).addFlags(launcherFlags)
+
+        runCatching { startActivity(launcherMain) }
+            .recoverCatching { startActivity(launcherHome) }
+            .onFailure { startActivity(Intent(Settings.ACTION_APPLICATION_SETTINGS)) }
     }
 
     override fun onDestroy() { repository.shutdown(); super.onDestroy() }
