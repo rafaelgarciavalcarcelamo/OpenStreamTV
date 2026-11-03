@@ -1,7 +1,7 @@
 {
-  "versionCode": 19,
-  "versionName": "0.13.0",
-  "apkUrl": "https://raw.githubusercontent.com/rafaelgarciavalcarcelamo/OpenStreamTV-Updates/main/OpenStreamTV-0.13.0.apk",
-  "sha256": "ED6BA75B5F4DDE1A1B00C889DDFB200819DA9E5EB64DE69F051093C7174DC76F",
-  "notes": "Primera versión de distribución firmada: búfer predeterminado de 60–180 segundos, copias de seguridad de credenciales desactivadas y avisos de actualización."
+  "versionCode": 20,
+  "versionName": "0.13.1",
+  "apkUrl": "https://raw.githubusercontent.com/rafaelgarciavalcarcelamo/OpenStreamTV/main/downloads/OpenStreamTV-0.13.1.apk",
+  "sha256": "733BEA3AA7C16BB7B02FCC38585DBFBF0A64F1E0CB8591E3ABF91E3B15AB29F0",
+  "notes": "Actualizador desde el mismo repositorio público, firma de producción, búfer predeterminado de 60–180 segundos y protección de copias de seguridad."
 }

@@ -123,7 +123,7 @@ class AppUpdateChecker(
 
     companion object {
         private const val MANIFEST_URL =
-            "https://raw.githubusercontent.com/rafaelgarciavalcarcelamo/OpenStreamTV-Updates/main/update.json"
+            "https://raw.githubusercontent.com/rafaelgarciavalcarcelamo/OpenStreamTV/main/update.json"
         private const val CHECK_INTERVAL_MS = 24L * 60L * 60L * 1_000L
     }
 }

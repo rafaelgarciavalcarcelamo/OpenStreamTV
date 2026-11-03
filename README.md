@@ -80,7 +80,7 @@ Con la clave configurada, genera y verifica la distribución con:
 apksigner verify --verbose app/build/outputs/apk/release/app-release.apk
 ```
 
-El comprobador de actualizaciones consulta un manifiesto y APK públicos en `OpenStreamTV-Updates`. Solo se deben publicar allí APK firmados con la misma clave de producción.
+El comprobador de actualizaciones consulta el manifiesto y las APK públicas de este mismo repositorio. Solo se deben publicar APK firmados con la misma clave de producción.
 
 Las comprobaciones de Android se ejecutan también en GitHub Actions. Las áreas de estabilidad pendientes y las siguientes funciones están documentadas en [docs/ESTABILIDAD.md](docs/ESTABILIDAD.md).
 
