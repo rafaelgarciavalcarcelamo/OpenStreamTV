@@ -1,0 +1,36 @@
+name: Informe de fallo
+description: Comunica un problema sin incluir datos privados
+title: "[Fallo]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        No pegues URLs de IPTV, listas, usuarios, contraseñas ni información personal.
+  - type: input
+    id: app_version
+    attributes:
+      label: Versión de OpenStream TV
+      placeholder: "0.13.1"
+    validations:
+      required: true
+  - type: input
+    id: device
+    attributes:
+      label: Dispositivo y versión de Android o Fire OS
+      placeholder: "Fire TV Stick 4K, Fire OS 8"
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Pasos para reproducirlo
+      placeholder: "1. ...\n2. ...\n3. ..."
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Resultado esperado y resultado obtenido
+    validations:
+      required: true

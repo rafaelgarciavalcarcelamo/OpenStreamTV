@@ -1,0 +1,18 @@
+name: Proponer una función
+description: Sugiere una mejora para OpenStream TV
+title: "[Mejora]: "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problema o necesidad
+      description: Describe qué sería más fácil o fiable para el usuario.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Propuesta
+    validations:
+      required: true
