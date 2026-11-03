@@ -1,6 +1,7 @@
 {
-  "versionCode": 18,
-  "versionName": "0.12.0",
-  "apkUrl": "https://raw.githubusercontent.com/rafaelgarciavalcarcelamo/OpenStreamTV/main/downloads/OpenStreamTV-0.12.0.apk",
-  "notes": "Mayor estabilidad con un búfer predeterminado de 60–180 segundos y avisos automáticos de futuras actualizaciones."
+  "versionCode": 19,
+  "versionName": "0.13.0",
+  "apkUrl": "https://raw.githubusercontent.com/rafaelgarciavalcarcelamo/OpenStreamTV-Updates/main/OpenStreamTV-0.13.0.apk",
+  "sha256": "ED6BA75B5F4DDE1A1B00C889DDFB200819DA9E5EB64DE69F051093C7174DC76F",
+  "notes": "Primera versión de distribución firmada: búfer predeterminado de 60–180 segundos, copias de seguridad de credenciales desactivadas y avisos de actualización."
 }

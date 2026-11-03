@@ -12,3 +12,4 @@ local.properties
 *.xmltv
 *.jks
 *.keystore
+.openstreamtv/

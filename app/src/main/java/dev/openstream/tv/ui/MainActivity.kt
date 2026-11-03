@@ -11,6 +11,7 @@ import android.net.Network
 import android.net.NetworkCapabilities
 import android.net.NetworkRequest
 import android.os.Bundle
+import android.os.Build
 import android.provider.Settings
 import android.text.InputType
 import android.text.TextUtils
@@ -509,7 +510,12 @@ class MainActivity : ComponentActivity() {
     private fun updateVpnWarningSoon() = runOnUiThread { refreshVpnWarning() }
 
     private fun openVpnSettings() {
-        val intent = listOf(Settings.ACTION_VPN_SETTINGS, Settings.ACTION_WIRELESS_SETTINGS, Settings.ACTION_SETTINGS)
+        val actions = buildList {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) add(Settings.ACTION_VPN_SETTINGS)
+            add(Settings.ACTION_WIRELESS_SETTINGS)
+            add(Settings.ACTION_SETTINGS)
+        }
+        val intent = actions
             .asSequence()
             .map(::Intent)
             .firstOrNull { it.resolveActivity(packageManager) != null }
