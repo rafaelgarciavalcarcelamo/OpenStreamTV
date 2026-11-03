@@ -22,6 +22,7 @@ Reproductor IPTV de código abierto para Android TV y Amazon Fire TV, creado des
 - Cambio rápido de canal con arriba/abajo o Channel Up/Down.
 - Perfiles de búfer Rápido, Equilibrado, Estable y Personalizado.
 - Ajustes independientes de búfer mínimo, máximo, arranque y reanudación.
+- Perfil predeterminado para instalaciones nuevas: 60–180 s de búfer, 10 s antes de iniciar, 15 s para reanudar y 30 s de retraso del directo.
 - Resolución máxima, modo de imagen, idiomas preferidos y fallback de decodificador.
 - Preferencia independiente de decodificador de vídeo y audio: automático, hardware o software.
 - Perfil estable con 15 segundos de retraso objetivo en HLS, margen de directo adaptativo y recuperación al borde de la emisión.
@@ -42,12 +43,14 @@ Reproductor IPTV de código abierto para Android TV y Amazon Fire TV, creado des
 - Inicio configurable en la portada, favoritos o último canal reproducido.
 - Actualización silenciosa de lista y EPG al abrir, conservando siempre la copia funcional.
 - Confirmación de salida y memoria del último canal.
-- Perfil recomendado predeterminado: búfer Estable (8 s antes de iniciar, 12 s tras un corte), 15 s de retraso HLS, 1080p, reconexión continua y fallback activo.
+- Comprobación diaria opcional de nuevas versiones publicadas en GitHub, aviso en pantalla y acceso directo a la descarga del APK.
+- Botón manual «Buscar actualización ahora» en Ajustes.
+- Perfil recomendado predeterminado: búfer Personalizado de 60–180 s, 10 s antes de iniciar, 15 s tras un corte, 30 s de retraso, 1080p, reconexión continua y fallback activo.
 - Reconexión automática configurable, timeouts de red, retraso del directo, User-Agent y reproducción automática.
 - Funciona sin registro: la configuración permanece en el dispositivo.
 - La guía se carga fuera del hilo de la pantalla; las descargas tienen límites de tamaño para evitar agotar el almacenamiento.
 
-La reconexión automática actúa mientras la pantalla de reproducción esté abierta. Si el servidor deja de emitir, la cuenta caduca o la conexión carece de capacidad suficiente, puede haber pausas pese a los reintentos. El retraso de 15 s se aplica a directos HLS que anuncian una ventana temporal; en flujos TS continuos la reserva depende del búfer acumulado.
+La reconexión automática actúa mientras la pantalla de reproducción esté abierta. Si el servidor deja de emitir, la cuenta caduca o la conexión carece de capacidad suficiente, puede haber pausas pese a los reintentos. El retraso de 30 s se aplica a directos HLS que anuncian una ventana temporal; en flujos TS continuos la reserva depende del búfer acumulado.
 
 ## Compilar
 

@@ -39,6 +39,7 @@ import dev.openstream.tv.data.Playlist
 import dev.openstream.tv.data.Preferences
 import dev.openstream.tv.data.Program
 import dev.openstream.tv.data.StartupMode
+import dev.openstream.tv.update.AppUpdateChecker
 
 class MainActivity : ComponentActivity() {
     private lateinit var repository: AppRepository
@@ -102,6 +103,7 @@ class MainActivity : ComponentActivity() {
             playlist?.channels?.firstOrNull { it.id == preferences.lastChannelId }?.let(::playChannel)
         }
         if (preferences.refreshSourcesOnLaunch) refreshSourcesSilently()
+        AppUpdateChecker(this, preferences).check()
     }
 
     override fun onStart() {

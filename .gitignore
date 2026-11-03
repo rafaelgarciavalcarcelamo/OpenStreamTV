@@ -5,6 +5,7 @@ local.properties
 **/build/
 *.iml
 *.apk
+!downloads/*.apk
 *.m3u
 *.m3u8
 *.m3u.gz

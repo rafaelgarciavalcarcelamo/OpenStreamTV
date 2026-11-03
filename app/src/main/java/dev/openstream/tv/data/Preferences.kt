@@ -54,22 +54,22 @@ class Preferences(context: Context) {
         get() = prefs.getString("epg_url", "") ?: ""
         set(value) = prefs.edit().putString("epg_url", value).apply()
     var bufferPreset: BufferPreset
-        get() = runCatching { BufferPreset.valueOf(prefs.getString("buffer_preset", BufferPreset.ESTABLE.name)!!) }.getOrDefault(BufferPreset.ESTABLE)
+        get() = runCatching { BufferPreset.valueOf(prefs.getString("buffer_preset", BufferPreset.PERSONALIZADO.name)!!) }.getOrDefault(BufferPreset.PERSONALIZADO)
         set(value) = prefs.edit().putString("buffer_preset", value.name).apply()
     var customMinMs: Int
-        get() = prefs.getInt("custom_min", 15_000)
+        get() = prefs.getInt("custom_min", 60_000)
         set(value) = prefs.edit().putInt("custom_min", value).apply()
     var customMaxMs: Int
-        get() = prefs.getInt("custom_max", 60_000)
+        get() = prefs.getInt("custom_max", 180_000)
         set(value) = prefs.edit().putInt("custom_max", value).apply()
     var customPlayMs: Int
-        get() = prefs.getInt("custom_play", 1_500)
+        get() = prefs.getInt("custom_play", 10_000)
         set(value) = prefs.edit().putInt("custom_play", value).apply()
     var customRebufferMs: Int
-        get() = prefs.getInt("custom_rebuffer", 3_000)
+        get() = prefs.getInt("custom_rebuffer", 15_000)
         set(value) = prefs.edit().putInt("custom_rebuffer", value).apply()
     var liveOffsetMs: Int
-        get() = prefs.getInt("live_offset", 15_000)
+        get() = prefs.getInt("live_offset", 30_000)
         set(value) = prefs.edit().putInt("live_offset", value).apply()
     var userAgent: String
         get() = prefs.getString("user_agent", "OpenStreamTV/0.8") ?: "OpenStreamTV/0.8"
@@ -132,6 +132,13 @@ class Preferences(context: Context) {
         get() = prefs.getInt("home_channel_count", 36).coerceIn(12, 60)
         set(value) = prefs.edit().putInt("home_channel_count", value.coerceIn(12, 60)).apply()
 
+    var automaticUpdateChecks: Boolean
+        get() = prefs.getBoolean("automatic_update_checks", true)
+        set(value) = prefs.edit().putBoolean("automatic_update_checks", value).apply()
+    var lastSuccessfulUpdateCheckMs: Long
+        get() = prefs.getLong("last_successful_update_check_ms", 0L)
+        set(value) = prefs.edit().putLong("last_successful_update_check_ms", value).apply()
+
     fun watchCounts(): Map<String, Int> {
         val json = runCatching { JSONObject(prefs.getString("channel_watch_counts", "{}") ?: "{}") }.getOrNull()
             ?: return emptyMap()
@@ -159,8 +166,12 @@ class Preferences(context: Context) {
     fun applyStableDefaults(force: Boolean = false): Boolean {
         if (!force && prefs.getBoolean("stable_defaults_v3", false)) return false
         prefs.edit()
-            .putString("buffer_preset", BufferPreset.ESTABLE.name)
-            .putInt("live_offset", 15_000)
+            .putString("buffer_preset", BufferPreset.PERSONALIZADO.name)
+            .putInt("custom_min", 60_000)
+            .putInt("custom_max", 180_000)
+            .putInt("custom_play", 10_000)
+            .putInt("custom_rebuffer", 15_000)
+            .putInt("live_offset", 30_000)
             .putInt("connect_timeout", 15_000)
             .putInt("read_timeout", 30_000)
             .putInt("max_video_height", 1080)

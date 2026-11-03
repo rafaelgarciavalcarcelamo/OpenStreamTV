@@ -21,6 +21,7 @@ import dev.openstream.tv.data.DecoderPreference
 import dev.openstream.tv.data.Preferences
 import dev.openstream.tv.data.ResizeMode
 import dev.openstream.tv.data.StartupMode
+import dev.openstream.tv.update.AppUpdateChecker
 
 class SettingsActivity : ComponentActivity() {
     private lateinit var preferences: Preferences
@@ -74,6 +75,14 @@ class SettingsActivity : ComponentActivity() {
             setTextColor(getColor(R.color.text_primary)); isChecked = preferences.showVpnWarning; isFocusable = true
         }
         root.addView(showVpnWarning, rowParams(58))
+        val automaticUpdates = Switch(this).apply {
+            text = "Avisar cuando haya una nueva versión en GitHub"
+            setTextColor(getColor(R.color.text_primary)); isChecked = preferences.automaticUpdateChecks; isFocusable = true
+        }
+        root.addView(automaticUpdates, rowParams(58))
+        root.addView(action("Buscar actualización ahora").apply {
+            setOnClickListener { AppUpdateChecker(this@SettingsActivity, preferences).check(force = true) }
+        }, rowParams(54))
 
         root.addView(sectionTitle("Portada y canales"))
         root.addView(action("Personalizar canales y su orden").apply {
@@ -233,6 +242,7 @@ class SettingsActivity : ComponentActivity() {
                 preferences.confirmExit = confirmExit.isChecked
                 preferences.refreshSourcesOnLaunch = refreshOnLaunch.isChecked
                 preferences.showVpnWarning = showVpnWarning.isChecked
+                preferences.automaticUpdateChecks = automaticUpdates.isChecked
                 preferences.smartHomeOrder = smartHomeOrder.isChecked
                 preferences.homeChannelCount = homeCountValues[homeCount.selectedItemPosition]
                 preferences.customMinMs = minSeconds * 1000
@@ -264,7 +274,7 @@ class SettingsActivity : ComponentActivity() {
         val restoreStableDefaults = action("Aplicar ajustes recomendados de máxima estabilidad").apply {
             setOnClickListener {
                 preferences.applyStableDefaults(force = true)
-                Toast.makeText(this@SettingsActivity, "Perfil estable aplicado: 15 s, 1080p y reconexión continua", Toast.LENGTH_LONG).show()
+                Toast.makeText(this@SettingsActivity, "Perfil estable aplicado: búfer de 60–180 s, retraso de 30 s y reconexión continua", Toast.LENGTH_LONG).show()
                 recreate()
             }
         }

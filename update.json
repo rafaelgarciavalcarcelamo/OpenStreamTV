@@ -1,0 +1,6 @@
+{
+  "versionCode": 18,
+  "versionName": "0.12.0",
+  "apkUrl": "https://raw.githubusercontent.com/rafaelgarciavalcarcelamo/OpenStreamTV/main/downloads/OpenStreamTV-0.12.0.apk",
+  "notes": "Mayor estabilidad con un búfer predeterminado de 60–180 segundos y avisos automáticos de futuras actualizaciones."
+}
