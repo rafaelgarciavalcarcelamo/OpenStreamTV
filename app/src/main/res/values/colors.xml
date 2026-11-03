@@ -4,6 +4,7 @@
     <color name="panel">#171717</color>
     <color name="panel_raised">#242424</color>
     <color name="accent">#E63B45</color>
+    <color name="launcher_background">#080808</color>
     <color name="accent_dark">#42171C</color>
     <color name="text_primary">#FAFAFA</color>
     <color name="text_secondary">#B9B9B9</color>
