@@ -80,42 +80,6 @@ Las capturas se actualizan con cada versión visual importante.
 
 La reconexión automática actúa mientras la pantalla de reproducción esté abierta. Si el servidor deja de emitir, la cuenta caduca o la conexión carece de capacidad suficiente, puede haber pausas pese a los reintentos. El retraso de 30 s se aplica a directos HLS que anuncian una ventana temporal; en flujos TS continuos la reserva depende del búfer acumulado.
 
-## Compilar
-
-Requisitos: Android Studio/JDK 17 y Android SDK 36.
-
-```powershell
-./gradlew.bat testDebugUnitTest assembleDebug
-```
-
-El APK queda en `app/build/outputs/apk/debug/app-debug.apk`.
-
-### Distribución de producción
-
-Las APK que se publiquen deben compilarse con una clave de firma de producción estable; no distribuyas APK debug. La compilación usa estas variables de entorno, que no se guardan en Git:
-
-```text
-OPENSTREAM_RELEASE_STORE_FILE
-OPENSTREAM_RELEASE_STORE_PASSWORD
-OPENSTREAM_RELEASE_KEY_ALIAS
-OPENSTREAM_RELEASE_KEY_PASSWORD
-```
-
-Con la clave configurada, genera y verifica la distribución con:
-
-```powershell
-./gradlew.bat clean assembleRelease
-apksigner verify --verbose app/build/outputs/apk/release/app-release.apk
-```
-
-El comprobador de actualizaciones consulta el manifiesto y las APK públicas de este mismo repositorio. Solo se deben publicar APK firmados con la misma clave de producción.
-
-Las comprobaciones de Android se ejecutan también en GitHub Actions. Las áreas de estabilidad pendientes y las siguientes funciones están documentadas en [docs/ESTABILIDAD.md](docs/ESTABILIDAD.md).
-
-## Alcance del MVP
-
-Esta versión importa televisión en directo mediante Xtream Codes. No implementa todavía películas/series Xtream, grabación, catch-up, sincronización entre dispositivos, PiP ni control parental.
-
 ## Licencia
 
 Código disponible bajo licencia MIT. Consulta `LICENSE`.
