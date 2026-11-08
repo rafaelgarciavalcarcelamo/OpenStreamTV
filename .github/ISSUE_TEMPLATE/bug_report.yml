@@ -11,7 +11,7 @@ body:
     id: app_version
     attributes:
       label: Versión de OpenStream TV
-      placeholder: "0.13.1"
+      placeholder: "0.14.0"
     validations:
       required: true
   - type: input

@@ -13,7 +13,7 @@ Reproductor IPTV de código abierto para Android TV y Amazon Fire TV. Rápido de
 ## Instalación en Android TV y Fire TV
 
 1. Abre la página de [Releases](https://github.com/rafaelgarciavalcarcelamo/OpenStreamTV/releases/latest) desde el televisor o descarga el APK en otro dispositivo y pásalo por USB.
-2. Descarga el archivo `OpenStreamTV-0.13.1.apk` de la versión más reciente.
+2. Descarga el archivo `OpenStreamTV-0.14.0-release.apk` de la versión más reciente.
 3. Si Android lo solicita, permite la instalación desde la aplicación con la que abriste el APK (navegador o gestor de archivos).
 4. Instala, abre OpenStream TV y elige **Añadir lista**.
 5. Añade una lista M3U, una cuenta Xtream autorizada y, opcionalmente, una guía XMLTV.

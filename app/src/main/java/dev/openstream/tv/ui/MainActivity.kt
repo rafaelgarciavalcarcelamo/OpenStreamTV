@@ -34,9 +34,9 @@ import androidx.recyclerview.widget.RecyclerView
 import dev.openstream.tv.R
 import dev.openstream.tv.data.AppRepository
 import dev.openstream.tv.data.Channel
-import dev.openstream.tv.data.CredentialVault
 import dev.openstream.tv.data.HomeChannelRanker
 import dev.openstream.tv.data.Playlist
+import dev.openstream.tv.data.PlaylistSourceType
 import dev.openstream.tv.data.Preferences
 import dev.openstream.tv.data.Program
 import dev.openstream.tv.data.StartupMode
@@ -630,43 +630,77 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun showSourcesDialog() {
-        val container = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(24), dp(8), dp(24), 0) }
-        val playlistInput = EditText(this).apply { hint = "URL de lista M3U"; setText(preferences.playlistUrl); setSingleLine(true) }
-        val epgInput = EditText(this).apply { hint = "URL XMLTV (opcional)"; setText(preferences.epgUrl); setSingleLine(true) }
-        val xtream = action("Añadir con Xtream Login").apply {
-            setOnClickListener { showXtreamDialog() }
+        val sources = repository.listPlaylistSources()
+        val activeId = repository.activePlaylistSource()?.id
+        val container = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(24), dp(8), dp(24), dp(8))
         }
-        container.addView(playlistInput, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(58)))
-        container.addView(epgInput, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(58)))
-        container.addView(xtream, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(52)).apply { topMargin = dp(10) })
-        AlertDialog.Builder(this)
-            .setTitle("Tus listas de canales")
-            .setMessage("Añade la lista de tu proveedor de televisión.")
-            .setView(container)
-            .setNeutralButton("Abrir archivo") { _, _ -> openPlaylistFile() }
-            .setNegativeButton("Cancelar", null)
-            .setPositiveButton("Actualizar") { _, _ ->
-                val listUrl = playlistInput.text.toString().trim()
-                val guideUrl = epgInput.text.toString().trim()
-                preferences.playlistUrl = listUrl
-                preferences.epgUrl = guideUrl
-                if (listUrl.isNotBlank()) importPlaylist(listUrl)
-                if (guideUrl.isNotBlank()) importEpg(guideUrl)
+        lateinit var dialog: AlertDialog
+        sources.forEach { source ->
+            val type = when (source.type) {
+                PlaylistSourceType.M3U -> "M3U"
+                PlaylistSourceType.XTREAM -> "Xtream"
+                PlaylistSourceType.FILE -> "Archivo"
             }
-            .show()
+            val selected = source.id == activeId
+            container.addView(action("${if (selected) "✓" else "○"}  ${source.name}  ·  $type${if (selected) "  ·  ACTIVA" else ""}").apply {
+                setOnClickListener {
+                    dialog.dismiss()
+                    activatePlaylistSource(source.id)
+                }
+            }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(56)).apply { bottomMargin = dp(8) })
+        }
+        if (sources.isEmpty()) {
+            container.addView(label("Todavía no hay listas. Añade la principal o una alternativa.", 17f, secondary = true))
+        }
+        container.addView(action("＋ Añadir lista M3U").apply { setOnClickListener { dialog.dismiss(); showAddM3uDialog() } }, sourceRowParams())
+        container.addView(action("＋ Añadir con Xtream Login").apply { setOnClickListener { dialog.dismiss(); showXtreamDialog() } }, sourceRowParams())
+        container.addView(action("＋ Importar archivo M3U").apply { setOnClickListener { dialog.dismiss(); openPlaylistFile() } }, sourceRowParams())
+        if (activeId != null) {
+            container.addView(action("↻ Actualizar solo la lista seleccionada").apply {
+                setOnClickListener { dialog.dismiss(); refreshSelectedPlaylist() }
+            }, sourceRowParams())
+            container.addView(action("Eliminar la lista seleccionada").apply {
+                setOnClickListener { dialog.dismiss(); confirmDeleteActiveSource() }
+            }, sourceRowParams())
+        }
+        container.addView(action("Configurar guía XMLTV").apply { setOnClickListener { dialog.dismiss(); showEpgDialog() } }, sourceRowParams())
+        val scroll = ScrollView(this).apply { addView(container) }
+        dialog = AlertDialog.Builder(this)
+            .setTitle("Mis listas")
+            .setMessage("Solo se cargan los canales de la lista marcada como activa.")
+            .setView(scroll)
+            .setNegativeButton("Cerrar", null)
+            .create()
+        dialog.show()
+    }
+
+    private fun showAddM3uDialog() {
+        val container = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(24), dp(8), dp(24), 0) }
+        val name = EditText(this).apply { hint = "Nombre (Principal, Alternativa…)"; setSingleLine(true) }
+        val url = EditText(this).apply { hint = "URL de lista M3U"; setSingleLine(true); inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI }
+        container.addView(name, sourceRowParams(58)); container.addView(url, sourceRowParams(58))
+        AlertDialog.Builder(this).setTitle("Añadir lista M3U").setView(container)
+            .setNegativeButton("Cancelar", null)
+            .setPositiveButton("Añadir y seleccionar") { _, _ ->
+                val source = url.text.toString().trim()
+                if (source.isBlank()) Toast.makeText(this, "Introduce la URL de la lista", Toast.LENGTH_LONG).show()
+                else importPlaylist(name.text.toString().trim().ifBlank { "Mi lista" }, source)
+            }.show()
     }
 
     private fun showXtreamDialog() {
-        val vault = CredentialVault(this)
         val container = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(24), dp(8), dp(24), 0) }
-        val server = EditText(this).apply { hint = "Servidor (https://proveedor.example:puerto)"; setText(preferences.xtreamServer); setSingleLine(true) }
-        val username = EditText(this).apply { hint = "Usuario"; setText(preferences.xtreamUsername); setSingleLine(true) }
+        val name = EditText(this).apply { hint = "Nombre (Principal, Alternativa…)"; setSingleLine(true) }
+        val server = EditText(this).apply { hint = "Servidor (https://proveedor.example:puerto)"; setSingleLine(true) }
+        val username = EditText(this).apply { hint = "Usuario"; setSingleLine(true) }
         val password = EditText(this).apply {
             hint = "Contraseña"
-            setText(vault.loadXtreamPassword())
             setSingleLine(true)
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
         }
+        container.addView(name, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(58)))
         container.addView(server, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(58)))
         container.addView(username, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(58)))
         container.addView(password, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(58)))
@@ -676,9 +710,23 @@ class MainActivity : ComponentActivity() {
             .setView(container)
             .setNegativeButton("Cancelar", null)
             .setPositiveButton("Conectar") { _, _ ->
-                importXtream(server.text.toString().trim(), username.text.toString().trim(), password.text.toString())
+                importXtream(name.text.toString().trim().ifBlank { "Xtream" }, server.text.toString().trim(), username.text.toString().trim(), password.text.toString())
             }
             .show()
+    }
+
+    private fun sourceRowParams(height: Int = 54) =
+        LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(height)).apply { topMargin = dp(6) }
+
+    private fun showEpgDialog() {
+        val input = EditText(this).apply { hint = "URL XMLTV"; setText(preferences.epgUrl); setSingleLine(true) }
+        AlertDialog.Builder(this).setTitle("Guía de programación").setView(input)
+            .setNegativeButton("Cancelar", null)
+            .setPositiveButton("Actualizar") { _, _ ->
+                val source = input.text.toString().trim()
+                preferences.epgUrl = source
+                if (source.isNotBlank()) importEpg(source)
+            }.show()
     }
 
     private fun openPlaylistFile() {
@@ -696,9 +744,9 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun importPlaylist(source: String) {
+    private fun importPlaylist(name: String, source: String) {
         setLoading(true, "Actualizando lista…")
-        repository.importPlaylist(source) { result -> runOnUiThread { handlePlaylistResult(result) } }
+        repository.importPlaylist(name, source) { result -> runOnUiThread { handlePlaylistResult(result) } }
     }
 
     private fun importPlaylist(uri: Uri) {
@@ -726,18 +774,15 @@ class MainActivity : ComponentActivity() {
         } }
     }
 
-    private fun importXtream(server: String, username: String, password: String) {
+    private fun importXtream(name: String, server: String, username: String, password: String) {
         if (server.isBlank() || username.isBlank() || password.isBlank()) {
             Toast.makeText(this, "Completa servidor, usuario y contraseña", Toast.LENGTH_LONG).show()
             return
         }
         setLoading(true, "Conectando con Xtream…")
-        repository.importXtream(server, username, password) { result -> runOnUiThread {
+        repository.importXtream(name, server, username, password) { result -> runOnUiThread {
             setLoading(false)
             result.onSuccess {
-                preferences.xtreamServer = server
-                preferences.xtreamUsername = username
-                CredentialVault(this).saveXtreamPassword(password)
                 playlist = it
                 selectedGroup = "Todos"
                 refresh()
@@ -747,6 +792,44 @@ class MainActivity : ComponentActivity() {
                 Toast.makeText(this, "No se pudo conectar con Xtream: ${it.message}", Toast.LENGTH_LONG).show()
             }
         } }
+    }
+
+    private fun activatePlaylistSource(id: String) {
+        setLoading(true, "Cambiando de lista…")
+        repository.activatePlaylistSource(id) { result -> runOnUiThread {
+            setLoading(false)
+            result.onSuccess {
+                playlist = it
+                selectedGroup = "Todos"
+                refresh(); showHome()
+                Toast.makeText(this, "Lista activa: ${it.name}", Toast.LENGTH_SHORT).show()
+            }.onFailure { Toast.makeText(this, "No se pudo seleccionar: ${it.message}", Toast.LENGTH_LONG).show() }
+        } }
+    }
+
+    private fun refreshSelectedPlaylist() {
+        setLoading(true, "Actualizando lista seleccionada…")
+        if (!repository.refreshActivePlaylist { result -> runOnUiThread { handlePlaylistResult(result) } }) {
+            setLoading(false)
+            Toast.makeText(this, "Esta lista no tiene una fuente actualizable", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    private fun confirmDeleteActiveSource() {
+        val active = repository.activePlaylistSource() ?: return
+        AlertDialog.Builder(this).setTitle("Eliminar ${active.name}")
+            .setMessage("Se eliminará esta lista y su copia local. Las demás listas no se modificarán.")
+            .setNegativeButton("Cancelar", null)
+            .setPositiveButton("Eliminar") { _, _ ->
+                repository.deletePlaylistSource(active.id) { result -> runOnUiThread {
+                    result.onSuccess {
+                        playlist = it
+                        selectedGroup = "Todos"
+                        refresh(); showHome()
+                        Toast.makeText(this, "Lista eliminada", Toast.LENGTH_SHORT).show()
+                    }.onFailure { Toast.makeText(this, "No se pudo eliminar: ${it.message}", Toast.LENGTH_LONG).show() }
+                } }
+            }.show()
     }
 
     private fun setLoading(loading: Boolean, message: String = "") {

@@ -15,89 +15,136 @@ import java.util.zip.GZIPInputStream
 
 class AppRepository(private val context: Context) {
     private val executor = Executors.newSingleThreadExecutor()
-    private val playlistFile = File(context.filesDir, "playlist.m3u")
-    private val encryptedXtreamFile = File(context.filesDir, "xtream_playlist.bin")
     private val epgFile = File(context.filesDir, "guide.xml")
-    private val sourcePrefs = context.getSharedPreferences("openstream_sources", Context.MODE_PRIVATE)
     private val vault = CredentialVault(context)
+    private val sourceStore = PlaylistSourceStore(context, vault)
 
     init {
-        recoverBackup(playlistFile)
-        recoverBackup(encryptedXtreamFile)
         recoverBackup(epgFile)
     }
 
-    fun loadSavedPlaylist(): Playlist? = when (sourcePrefs.getString("active_type", "m3u")) {
-        "xtream" -> if (encryptedXtreamFile.exists()) runCatching {
-            val text = vault.decrypt(encryptedXtreamFile.readBytes()).toString(Charsets.UTF_8)
-            text.reader().use { M3uParser.parse(it, "Xtream") }
-        }.getOrNull() else null
-        else -> if (playlistFile.exists()) playlistFile.reader().use { M3uParser.parse(it) } else null
-    }
+    fun listPlaylistSources(): List<PlaylistSource> = sourceStore.all()
+    fun activePlaylistSource(): PlaylistSource? = sourceStore.active()
+    fun loadSavedPlaylist(): Playlist? = sourceStore.active()?.let(::loadCachedPlaylist)
 
-    fun importPlaylist(source: String, callback: (Result<Playlist>) -> Unit) = executor.execute {
+    fun importPlaylist(name: String, source: String, callback: (Result<Playlist>) -> Unit) = executor.execute {
         val result = runCatching {
-            val pending = File(context.filesDir, "playlist.m3u.pending")
-            openSource(source).use { input -> FileOutputStream(pending).use { BoundedStreams.copy(input, it, MAX_PLAYLIST_BYTES) } }
-            pending.reader().use { M3uParser.parse(it, source.substringAfterLast('/').ifBlank { "Mi lista" }) }
-                .also { require(it.channels.isNotEmpty()) { "La lista no contiene canales válidos" } }
-                .also { replaceFile(pending, playlistFile) }
-                .also { sourcePrefs.edit().putString("active_type", "m3u").apply() }
+            val definition = sourceStore.create(name, PlaylistSourceType.M3U, endpoint = source)
+            refreshSource(definition).also {
+                sourceStore.upsert(definition)
+                sourceStore.setActive(definition.id)
+            }
         }
         callback(result)
     }
 
     fun importPlaylist(uri: Uri, callback: (Result<Playlist>) -> Unit) = executor.execute {
         val result = runCatching {
-            val pending = File(context.filesDir, "playlist.m3u.pending")
+            val definition = sourceStore.create("Lista importada", PlaylistSourceType.FILE)
+            val pending = File(context.filesDir, "${definition.cacheFile}.pending")
             context.contentResolver.openInputStream(uri).use { input ->
                 requireNotNull(input) { "No se pudo abrir el archivo" }
                 FileOutputStream(pending).use { BoundedStreams.copy(input, it, MAX_PLAYLIST_BYTES) }
             }
-            pending.reader().use { M3uParser.parse(it) }
+            val playlist = pending.reader().use { M3uParser.parse(it, definition.name) }
                 .also { require(it.channels.isNotEmpty()) { "La lista no contiene canales válidos" } }
-                .also { replaceFile(pending, playlistFile) }
-                .also { sourcePrefs.edit().putString("active_type", "m3u").apply() }
-        }
-        callback(result)
-    }
-
-    fun importXtream(server: String, username: String, password: String, callback: (Result<Playlist>) -> Unit) = executor.execute {
-        val result = runCatching {
-            val prefs = Preferences(context)
-            val playlist = XtreamClient(
-                server = server,
-                username = username,
-                password = password,
-                connectTimeoutMs = prefs.connectTimeoutMs,
-                readTimeoutMs = prefs.readTimeoutMs,
-            ).loadLivePlaylist()
-            val m3u = playlist.toM3u()
-            val pending = File(context.filesDir, "xtream_playlist.bin.pending")
-            pending.writeBytes(vault.encrypt(m3u.toByteArray(Charsets.UTF_8)))
-            replaceFile(pending, encryptedXtreamFile)
-            sourcePrefs.edit().putString("active_type", "xtream").apply()
+            savePlaylistCache(definition, pending.readText())
+            pending.delete()
+            sourceStore.upsert(definition)
+            sourceStore.setActive(definition.id)
             playlist
         }
         callback(result)
     }
 
-    fun refreshActivePlaylist(callback: (Result<Playlist>) -> Unit): Boolean {
-        val preferences = Preferences(context)
-        return when (sourcePrefs.getString("active_type", "m3u")) {
-            "xtream" -> {
-                val password = vault.loadXtreamPassword()
-                if (preferences.xtreamServer.isBlank() || preferences.xtreamUsername.isBlank() || password.isBlank()) false
-                else {
-                    importXtream(preferences.xtreamServer, preferences.xtreamUsername, password, callback)
-                    true
-                }
+    fun importXtream(name: String, server: String, username: String, password: String, callback: (Result<Playlist>) -> Unit) = executor.execute {
+        val result = runCatching {
+            val definition = sourceStore.create(
+                name = name,
+                type = PlaylistSourceType.XTREAM,
+                endpoint = server,
+                username = username,
+                password = password,
+            )
+            refreshSource(definition).also {
+                sourceStore.upsert(definition)
+                sourceStore.setActive(definition.id)
             }
-            else -> if (preferences.playlistUrl.isNotBlank()) {
-                importPlaylist(preferences.playlistUrl, callback)
-                true
-            } else false
         }
+        callback(result)
+    }
+
+    fun activatePlaylistSource(id: String, callback: (Result<Playlist>) -> Unit) = executor.execute {
+        val result = runCatching {
+            val definition = sourceStore.all().firstOrNull { it.id == id } ?: error("La lista ya no existe")
+            val playlist = loadCachedPlaylist(definition) ?: refreshSource(definition)
+            sourceStore.setActive(id)
+            playlist
+        }
+        callback(result)
+    }
+
+    fun deletePlaylistSource(id: String, callback: (Result<Playlist?>) -> Unit) = executor.execute {
+        val result = runCatching {
+            val removed = sourceStore.remove(id) ?: error("La lista ya no existe")
+            File(context.filesDir, removed.cacheFile).delete()
+            sourceStore.active()?.let { loadCachedPlaylist(it) ?: refreshSource(it) }
+        }
+        callback(result)
+    }
+
+    fun refreshActivePlaylist(callback: (Result<Playlist>) -> Unit): Boolean {
+        val source = sourceStore.active() ?: return false
+        if (source.type == PlaylistSourceType.FILE || source.endpoint.isBlank()) return false
+        executor.execute { callback(runCatching { refreshSource(source) }) }
+        return true
+    }
+
+    private fun refreshSource(source: PlaylistSource): Playlist = when (source.type) {
+        PlaylistSourceType.M3U -> {
+            val pending = File(context.filesDir, "${source.cacheFile}.download")
+            openSource(source.endpoint).use { input ->
+                FileOutputStream(pending).use { BoundedStreams.copy(input, it, MAX_PLAYLIST_BYTES) }
+            }
+            val text = pending.readText()
+            pending.delete()
+            text.reader().use { M3uParser.parse(it, source.name) }
+                .also { require(it.channels.isNotEmpty()) { "La lista no contiene canales válidos" } }
+                .also { savePlaylistCache(source, text) }
+        }
+        PlaylistSourceType.XTREAM -> {
+            val prefs = Preferences(context)
+            XtreamClient(
+                server = source.endpoint,
+                username = source.username,
+                password = source.password,
+                connectTimeoutMs = prefs.connectTimeoutMs,
+                readTimeoutMs = prefs.readTimeoutMs,
+            ).loadLivePlaylist().let { playlist ->
+                val named = playlist.copy(name = source.name)
+                savePlaylistCache(source, named.toM3u())
+                named
+            }
+        }
+        PlaylistSourceType.FILE -> loadCachedPlaylist(source) ?: error("No hay copia de la lista importada")
+    }
+
+    private fun loadCachedPlaylist(source: PlaylistSource): Playlist? {
+        val file = File(context.filesDir, source.cacheFile)
+        if (!file.exists()) return null
+        return runCatching {
+            val bytes = file.readBytes()
+            val text = if (source.cacheEncrypted) vault.decrypt(bytes).toString(Charsets.UTF_8)
+            else bytes.toString(Charsets.UTF_8)
+            text.reader().use { M3uParser.parse(it, source.name) }
+        }.getOrNull()
+    }
+
+    private fun savePlaylistCache(source: PlaylistSource, text: String) {
+        val pending = File(context.filesDir, "${source.cacheFile}.pending")
+        val bytes = text.toByteArray(Charsets.UTF_8)
+        pending.writeBytes(if (source.cacheEncrypted) vault.encrypt(bytes) else bytes)
+        replaceFile(pending, File(context.filesDir, source.cacheFile))
     }
 
     fun importEpg(source: String, callback: (Result<List<Program>>) -> Unit) = executor.execute {
