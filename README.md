@@ -22,6 +22,14 @@ Las actualizaciones se avisan automáticamente una vez al día. También puedes 
 
 > Si instalaste una APK debug de pruebas anterior a `0.13.0`, desinstálala antes de instalar una release firmada. La desinstalación borra los datos guardados en la aplicación.
 
+## Control desde iPhone o Android
+
+OpenStream TV puede alojar un panel web privado dentro de la red doméstica. En la televisión, abre **Móvil**, escanea el QR y el teléfono recordará el dispositivo para las siguientes veces. Desde el panel se pueden añadir, probar, modificar, activar, actualizar y eliminar listas M3U o Xtream sin volver a escribirlas con el mando.
+
+Las credenciales permanecen cifradas en la televisión: la web solo muestra el servidor y un usuario oculto. El acceso requiere el código de seis cifras mostrado en la TV, limita los intentos fallidos y rechaza conexiones que no procedan de la misma red local.
+
+> Algunas VPN bloquean por completo la red doméstica. Con Proton VPN hay que activar **Ajustes → LAN → Permitir conexiones LAN** (función Plus) o desconectarla únicamente mientras se administran las listas. En otras VPN, activa la opción equivalente de descubrimiento o acceso LAN.
+
 ## Capturas
 
 La pantalla de ajustes está diseñada para que una persona sin experiencia técnica pueda mantener una reproducción estable sin tocar opciones avanzadas.
@@ -36,6 +44,9 @@ Las capturas se actualizan con cada versión visual importante.
 - Orden inteligente de Inicio: canales fijados, favoritos y más vistos según el uso local del usuario.
 - Pantalla de personalización para añadir, quitar, subir y bajar canales; el orden elegido también se aplica al catálogo y al cambio de canal.
 - Acceso superior a Inicio, Canales, Favoritos, Buscar, Mis listas y Ajustes; «Reproducir» abre el último canal visto.
+- Panel web local para iPhone y Android con QR, vinculación recordada y controles grandes pensados para usuarios sin experiencia técnica.
+- Gestión remota de varias listas: probar antes de guardar, activar, actualizar, modificar credenciales y eliminar sin mostrar secretos existentes.
+- Descubrimiento de otros dispositivos OpenStream TV dentro de la misma red doméstica.
 - Aviso superior discreto cuando Android no detecta una VPN activa; abre los ajustes de VPN y puede desactivarse desde Ajustes.
 - Catálogo de dos paneles optimizado para mando: categorías y canales con el programa actual cuando hay guía.
 - Categorías y canales en dos paneles con foco visible, número de canal, programa actual y una pantalla vacía con instrucciones sencillas.

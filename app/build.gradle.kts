@@ -11,8 +11,8 @@ android {
         applicationId = "dev.openstream.tv"
         minSdk = 23
         targetSdk = 36
-        versionCode = 21
-        versionName = "0.14.0"
+        versionCode = 22
+        versionName = "0.15.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -60,5 +60,7 @@ dependencies {
     implementation("androidx.media3:media3-datasource-okhttp:1.10.1")
     implementation("androidx.media3:media3-ui:1.10.1")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    implementation("org.nanohttpd:nanohttpd:2.3.1")
+    implementation("com.google.zxing:core:3.5.3")
     testImplementation("junit:junit:4.13.2")
 }

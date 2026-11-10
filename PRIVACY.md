@@ -12,6 +12,8 @@ OpenStream TV no requiere una cuenta y no incorpora analítica, publicidad ni se
 
 La aplicación se conecta exclusivamente a las direcciones que introduzca la persona usuaria para sus listas, guía o proveedor Xtream. Si están activadas las comprobaciones de actualización, consulta una vez al día el manifiesto público de GitHub. GitHub puede recibir la dirección IP y el identificador técnico de versión usados para esa conexión.
 
+El control móvil abre un servidor web en el puerto local `8765` mientras el proceso de OpenStream TV está en ejecución. Solo acepta dispositivos de la misma red doméstica y exige el código mostrado en la televisión. El navegador recibe los nombres, tipos y servidores abreviados de las listas, pero no las URLs completas, usuarios completos ni contraseñas almacenadas. No interviene ningún servidor en la nube de OpenStream TV.
+
 Las fuentes IPTV pueden usar HTTP o HTTPS. HTTPS es preferible; HTTP permite que la red intercepte o modifique el tráfico.
 
 ## Soporte

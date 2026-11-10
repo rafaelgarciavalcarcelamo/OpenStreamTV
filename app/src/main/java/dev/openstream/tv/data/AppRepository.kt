@@ -93,6 +93,43 @@ class AppRepository(private val context: Context) {
         callback(result)
     }
 
+    fun updatePlaylistSource(
+        id: String,
+        name: String?,
+        endpoint: String?,
+        username: String?,
+        password: String?,
+        callback: (Result<Playlist>) -> Unit,
+    ) = executor.execute {
+        val result = runCatching {
+            val current = sourceStore.all().firstOrNull { it.id == id } ?: error("La lista ya no existe")
+            val updated = current.copy(
+                name = name?.trim()?.takeIf(String::isNotBlank) ?: current.name,
+                endpoint = endpoint?.trim()?.takeIf(String::isNotBlank) ?: current.endpoint,
+                username = username?.trim()?.takeIf(String::isNotBlank) ?: current.username,
+                password = password?.takeIf(String::isNotBlank) ?: current.password,
+            )
+            val playlist = when (updated.type) {
+                PlaylistSourceType.FILE -> loadCachedPlaylist(updated)?.copy(name = updated.name)
+                    ?: error("No hay copia de la lista importada")
+                else -> refreshSource(updated)
+            }
+            sourceStore.upsert(updated)
+            playlist
+        }
+        callback(result)
+    }
+
+    fun refreshPlaylistSource(id: String, callback: (Result<Playlist>) -> Unit) = executor.execute {
+        callback(runCatching {
+            val source = sourceStore.all().firstOrNull { it.id == id } ?: error("La lista ya no existe")
+            require(source.type != PlaylistSourceType.FILE && source.endpoint.isNotBlank()) {
+                "Esta lista no tiene una fuente actualizable"
+            }
+            refreshSource(source)
+        })
+    }
+
     fun refreshActivePlaylist(callback: (Result<Playlist>) -> Unit): Boolean {
         val source = sourceStore.active() ?: return false
         if (source.type == PlaylistSourceType.FILE || source.endpoint.isBlank()) return false

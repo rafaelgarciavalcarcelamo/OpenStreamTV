@@ -2,8 +2,12 @@ package dev.openstream.tv.ui
 
 import android.app.Activity
 import android.app.AlertDialog
+import android.content.BroadcastReceiver
 import android.content.ComponentName
+import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
+import android.graphics.Bitmap
 import android.graphics.Typeface
 import android.net.Uri
 import android.net.ConnectivityManager
@@ -21,6 +25,7 @@ import android.view.ViewGroup
 import android.widget.Button
 import android.widget.EditText
 import android.widget.FrameLayout
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.ScrollView
@@ -29,6 +34,7 @@ import android.widget.TextClock
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.OnBackPressedCallback
+import androidx.core.content.ContextCompat
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import dev.openstream.tv.R
@@ -40,7 +46,11 @@ import dev.openstream.tv.data.PlaylistSourceType
 import dev.openstream.tv.data.Preferences
 import dev.openstream.tv.data.Program
 import dev.openstream.tv.data.StartupMode
+import dev.openstream.tv.local.LocalControlRuntime
+import dev.openstream.tv.local.LocalControlServer
 import dev.openstream.tv.update.AppUpdateChecker
+import com.google.zxing.BarcodeFormat
+import com.google.zxing.MultiFormatWriter
 
 class MainActivity : ComponentActivity() {
     private lateinit var repository: AppRepository
@@ -77,6 +87,17 @@ class MainActivity : ComponentActivity() {
     private var guideReleasedForMemory = false
     private var showingCatalog = false
     private var networkCallbackRegistered = false
+    private var playlistChangeReceiverRegistered = false
+    private val playlistChangeReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (intent?.action != LocalControlServer.ACTION_PLAYLISTS_CHANGED) return
+            playlist = repository.loadSavedPlaylist()
+            selectedGroup = "Todos"
+            refresh()
+            showHome()
+            Toast.makeText(this@MainActivity, "Listas actualizadas desde el móvil", Toast.LENGTH_SHORT).show()
+        }
+    }
     private val vpnNetworkCallback = object : ConnectivityManager.NetworkCallback() {
         override fun onAvailable(network: Network) = updateVpnWarningSoon()
         override fun onLost(network: Network) = updateVpnWarningSoon()
@@ -109,6 +130,8 @@ class MainActivity : ComponentActivity() {
 
     override fun onStart() {
         super.onStart()
+        registerPlaylistChangeReceiver()
+        repository.loadSavedPlaylist()?.let { playlist = it }
         registerVpnMonitor()
         refreshVpnWarning()
         refreshWatchButton()
@@ -121,6 +144,7 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onStop() {
+        unregisterPlaylistChangeReceiver()
         unregisterVpnMonitor()
         super.onStop()
     }
@@ -266,9 +290,10 @@ class MainActivity : ComponentActivity() {
         favoritesNav = action("Favoritos").apply { setOnClickListener { showCatalog("Favoritos") } }
         searchButton = action("Buscar").apply { setOnClickListener { showSearchDialog() } }
         val sources = action("Mis listas").apply { setOnClickListener { showSourcesDialog() } }
+        val mobile = action("Móvil").apply { setOnClickListener { showMobileControlDialog() } }
         val apps = action("Ver aplicaciones").apply { setOnClickListener { openDeviceLauncher() } }
         val settings = action("Ajustes").apply { setOnClickListener { startActivity(Intent(this@MainActivity, SettingsActivity::class.java)) } }
-        for (button in listOf(homeNav, channelsNav, favoritesNav, searchButton, sources, apps, settings)) {
+        for (button in listOf(homeNav, channelsNav, favoritesNav, searchButton, sources, mobile, apps, settings)) {
             dock.addView(button, LinearLayout.LayoutParams(0, dp(if (compact) 40 else 46), 1f).apply {
                 leftMargin = dp(4)
                 rightMargin = dp(4)
@@ -674,6 +699,80 @@ class MainActivity : ComponentActivity() {
             .setNegativeButton("Cerrar", null)
             .create()
         dialog.show()
+    }
+
+    private fun showMobileControlDialog() {
+        LocalControlRuntime.start(this)
+        val url = LocalControlRuntime.mobileUrl(this)
+        if (url == null || !LocalControlRuntime.isRunning()) {
+            AlertDialog.Builder(this)
+                .setTitle("Control desde el móvil")
+                .setMessage("Conecta la televisión a la red Wi‑Fi o por cable y vuelve a intentarlo.")
+                .setPositiveButton("Entendido", null)
+                .show()
+            return
+        }
+        val container = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER_HORIZONTAL
+            setPadding(dp(28), dp(10), dp(28), 0)
+        }
+        container.addView(label("1. Conecta el móvil a la misma Wi‑Fi.\n2. Abre la cámara y escanea el código.\n3. El móvil recordará esta televisión.", 17f, secondary = true).apply {
+            gravity = Gravity.CENTER
+        }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(96)))
+        if (isVpnActive()) {
+            val vpnHelp = if (packageManager.getInstalledApplications(0).any { it.packageName == "ch.protonvpn.android" }) {
+                "Proton VPN detectada: activa Ajustes → LAN con Proton Plus, o desconéctala solo mientras cambias las listas."
+            } else {
+                "VPN detectada: activa «Permitir conexiones LAN» en sus ajustes y vuelve a conectarla."
+            }
+            container.addView(label(vpnHelp, 14f).apply {
+                gravity = Gravity.CENTER
+                setTextColor(getColor(R.color.accent))
+            }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(52)))
+        }
+        container.addView(ImageView(this).apply {
+            setImageBitmap(qrBitmap(url, dp(270)))
+            contentDescription = "Código QR para abrir el control móvil"
+        }, LinearLayout.LayoutParams(dp(286), dp(286)))
+        container.addView(label("Código: ${LocalControlRuntime.accessCode(this)}", 25f).apply {
+            typeface = Typeface.DEFAULT_BOLD
+            letterSpacing = .14f
+            gravity = Gravity.CENTER
+        }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(56)))
+        container.addView(label(url.substringBefore("?k="), 14f, secondary = true).apply {
+            gravity = Gravity.CENTER
+            setTextIsSelectable(true)
+        }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(44)))
+        AlertDialog.Builder(this)
+            .setTitle("Control desde el móvil")
+            .setView(container)
+            .setNegativeButton("Cerrar", null)
+            .show()
+    }
+
+    private fun qrBitmap(content: String, size: Int): Bitmap {
+        val matrix = MultiFormatWriter().encode(content, BarcodeFormat.QR_CODE, size, size)
+        val pixels = IntArray(size * size)
+        for (y in 0 until size) for (x in 0 until size) {
+            pixels[y * size + x] = if (matrix[x, y]) 0xff05090d.toInt() else 0xffffffff.toInt()
+        }
+        return Bitmap.createBitmap(size, size, Bitmap.Config.RGB_565).apply {
+            setPixels(pixels, 0, size, 0, 0, size, size)
+        }
+    }
+
+    private fun registerPlaylistChangeReceiver() {
+        if (playlistChangeReceiverRegistered) return
+        val filter = IntentFilter(LocalControlServer.ACTION_PLAYLISTS_CHANGED)
+        ContextCompat.registerReceiver(this, playlistChangeReceiver, filter, ContextCompat.RECEIVER_NOT_EXPORTED)
+        playlistChangeReceiverRegistered = true
+    }
+
+    private fun unregisterPlaylistChangeReceiver() {
+        if (!playlistChangeReceiverRegistered) return
+        runCatching { unregisterReceiver(playlistChangeReceiver) }
+        playlistChangeReceiverRegistered = false
     }
 
     private fun showAddM3uDialog() {
