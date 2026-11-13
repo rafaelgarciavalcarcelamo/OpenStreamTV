@@ -1,7 +1,7 @@
 {
-  "versionCode": 22,
-  "versionName": "0.15.0",
-  "apkUrl": "https://github.com/rafaelgarciavalcarcelamo/OpenStreamTV/releases/download/v0.15.0/OpenStreamTV-0.15.0-release.apk",
-  "sha256": "1E374DD4FE1E67D187A688BBFA92E83B233F0B9866E441752DAC81FFEC2F1C12",
-  "notes": "Nueva portada, logos en el catálogo, categorías y listas recuperables, interruptor de guía EPG y gestión desde el móvil."
+  "versionCode": 23,
+  "versionName": "0.16.0",
+  "apkUrl": "https://github.com/rafaelgarciavalcarcelamo/OpenStreamTV/releases/download/v0.16.0/OpenStreamTV-0.16.0-tv.apk",
+  "sha256": "3C3E22690D68610F443617A1689DB3AC4A7218CDBD2DB25B357007E7307EBCB1",
+  "notes": "Actualización para Android TV y Fire TV. En GitHub también está disponible una APK independiente para móviles y tablets Android."
 }
