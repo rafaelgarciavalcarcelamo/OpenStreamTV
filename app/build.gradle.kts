@@ -11,10 +11,24 @@ android {
         applicationId = "dev.openstream.tv"
         minSdk = 23
         targetSdk = 36
-        versionCode = 22
-        versionName = "0.15.0"
+        versionCode = 23
+        versionName = "0.16.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+    }
+
+    buildFeatures { buildConfig = true }
+    flavorDimensions += "device"
+    productFlavors {
+        create("tv") {
+            dimension = "device"
+            buildConfigField("boolean", "IS_MOBILE", "false")
+        }
+        create("mobile") {
+            dimension = "device"
+            applicationIdSuffix = ".mobile"
+            buildConfigField("boolean", "IS_MOBILE", "true")
+        }
     }
 
     buildTypes {

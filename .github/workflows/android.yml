@@ -21,4 +21,4 @@ jobs:
       - name: Install Android SDK
         run: sdkmanager "platforms;android-36" "build-tools;36.1.0"
       - name: Check, test and build
-        run: ./gradlew lintDebug testDebugUnitTest assembleDebug --no-daemon
+        run: ./gradlew lintTvDebug lintMobileDebug testTvDebugUnitTest testMobileDebugUnitTest assembleDebug --no-daemon

@@ -10,6 +10,7 @@ import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 import androidx.activity.ComponentActivity
+import dev.openstream.tv.BuildConfig
 import dev.openstream.tv.R
 import dev.openstream.tv.data.AppRepository
 import dev.openstream.tv.data.ChannelStabilityStore
@@ -26,22 +27,24 @@ class DiagnosticsActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        useTvFullscreen()
+        if (!BuildConfig.IS_MOBILE) useTvFullscreen()
         buildUi()
         runDiagnostics()
     }
 
     private fun buildUi() {
+        val mobile = BuildConfig.IS_MOBILE
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             background = getDrawable(R.drawable.tv_background)
-            setPadding(dp(42), dp(26), dp(42), dp(26))
+            val horizontal = dp(if (mobile) 16 else 42)
+            setPadding(horizontal, dp(26), horizontal, dp(26))
         }
-        root.addView(label("Diagnóstico automático", 34f).apply {
+        root.addView(label("Diagnóstico automático", if (mobile) 24f else 34f).apply {
             setTypeface(null, android.graphics.Typeface.BOLD)
         }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(58)))
-        root.addView(label("Comprobamos la televisión, la red y la configuración sin reproducir ni descargar canales.", 16f, true),
-            LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(42)))
+        root.addView(label("Comprobamos la red y la configuración sin reproducir ni descargar canales.", 16f, true),
+            LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, if (mobile) ViewGroup.LayoutParams.WRAP_CONTENT else dp(42)))
         results = label("Analizando…", 17f).apply {
             setPadding(dp(24), dp(18), dp(24), dp(18))
             background = getDrawable(R.drawable.panel_surface)
@@ -53,10 +56,16 @@ class DiagnosticsActivity : ComponentActivity() {
         })
         val actions = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.END }
         actions.addView(action("Repetir diagnóstico").apply { setOnClickListener { runDiagnostics() } },
-            LinearLayout.LayoutParams(dp(260), dp(52)).apply { rightMargin = dp(12) })
-        actions.addView(action("Volver").apply { setOnClickListener { finish() } }, LinearLayout.LayoutParams(dp(150), dp(52)))
+            LinearLayout.LayoutParams(if (mobile) 0 else dp(260), dp(52), if (mobile) 1f else 0f).apply { rightMargin = dp(12) })
+        actions.addView(action("Volver").apply { setOnClickListener { finish() } }, LinearLayout.LayoutParams(dp(if (mobile) 88 else 150), dp(52)))
         root.addView(actions, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(56)))
-        setContentView(root)
+        if (mobile) {
+            setContentView(android.widget.FrameLayout(this).apply {
+                setBackgroundColor(getColor(R.color.ink))
+                applyTouchInsets()
+                addView(root, android.widget.FrameLayout.LayoutParams(-1, -1))
+            })
+        } else setContentView(root)
     }
 
     private fun runDiagnostics() {
@@ -66,7 +75,7 @@ class DiagnosticsActivity : ComponentActivity() {
             val preferences = Preferences(this)
             val playlist = repository.loadSavedPlaylist()
             val source = repository.activePlaylistSource()
-            val guide = repository.loadSavedEpg()
+            val guide = if (preferences.epgEnabled) repository.loadSavedEpg() else emptyList()
             val connectivity = getSystemService(ConnectivityManager::class.java)
             val network = connectivity?.activeNetwork
             val capabilities = network?.let(connectivity::getNetworkCapabilities)
@@ -101,7 +110,11 @@ class DiagnosticsActivity : ComponentActivity() {
                     false -> "✕ El servidor IPTV no responde en este momento"
                     null -> "⚠ No se pudo identificar el servidor IPTV"
                 })
-                appendLine(if (guide.isNotEmpty()) "✓ Guía cargada: ${guide.size} programas · $currentGuideEntries en emisión" else "⚠ No hay guía EPG cargada")
+                appendLine(when {
+                    !preferences.epgEnabled -> "• Guía EPG desactivada"
+                    guide.isNotEmpty() -> "✓ Guía cargada: ${guide.size} programas · $currentGuideEntries en emisión"
+                    else -> "⚠ No hay guía EPG cargada"
+                })
                 appendLine()
                 appendLine("Búfer: ${preferences.customMinMs / 1000}–${preferences.customMaxMs / 1000} s · inicio ${preferences.customPlayMs / 1000} s")
                 appendLine("Retraso objetivo: ${preferences.liveOffsetMs / 1000} s · vídeo máximo ${preferences.maxVideoHeight}p")

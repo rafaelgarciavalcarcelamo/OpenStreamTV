@@ -38,6 +38,7 @@ import androidx.media3.exoplayer.ExoPlaybackException
 import androidx.media3.ui.PlayerView
 import androidx.media3.ui.AspectRatioFrameLayout
 import dev.openstream.tv.R
+import dev.openstream.tv.BuildConfig
 import dev.openstream.tv.data.AppRepository
 import dev.openstream.tv.data.Channel
 import dev.openstream.tv.data.ChannelStabilityStore
@@ -66,6 +67,8 @@ class PlayerActivity : ComponentActivity() {
     private lateinit var stabilityStore: ChannelStabilityStore
     private lateinit var repository: AppRepository
     private var playbackSourceId: String? = null
+    private var touchControls: LinearLayout? = null
+    private var playPause: Button? = null
     private var playlistReceiverRegistered = false
     private var player: ExoPlayer? = null
     private var channels = emptyList<Channel>()
@@ -163,7 +166,7 @@ class PlayerActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        window.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_FULLSCREEN or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+        if (!BuildConfig.IS_MOBILE) useTvFullscreen()
         preferences = Preferences(this)
         stabilityStore = ChannelStabilityStore(this)
         repository = AppRepository(this)
@@ -178,7 +181,7 @@ class PlayerActivity : ComponentActivity() {
             limit = savedChannels.size.coerceAtLeast(1),
             smart = false,
         )
-        val channelId = intent.getStringExtra(EXTRA_CHANNEL_ID)
+        val channelId = savedInstanceState?.getString(EXTRA_CHANNEL_ID) ?: intent.getStringExtra(EXTRA_CHANNEL_ID)
         intent.getStringArrayListExtra(EXTRA_FALLBACK_CHANNEL_IDS)
             .orEmpty()
             .filterNot { it == channelId }
@@ -192,8 +195,17 @@ class PlayerActivity : ComponentActivity() {
         })
     }
 
+    override fun onSaveInstanceState(outState: Bundle) {
+        outState.putString(EXTRA_CHANNEL_ID, channels.getOrNull(index)?.id)
+        super.onSaveInstanceState(outState)
+    }
+
     private fun buildUi() {
-        val root = FrameLayout(this).apply { setBackgroundColor(getColor(android.R.color.black)) }
+        val mobile = BuildConfig.IS_MOBILE
+        val root = FrameLayout(this).apply {
+            setBackgroundColor(getColor(android.R.color.black))
+            if (mobile) applyTouchInsets()
+        }
         playerView = PlayerView(this).apply {
             useController = false
             isFocusable = true
@@ -211,8 +223,8 @@ class PlayerActivity : ComponentActivity() {
             setBackgroundColor(0xD9081724.toInt())
             background = getDrawable(R.drawable.hero_card)
         }
-        title = label("", 27f)
-        hint = label("OK: canales    ↑↓: cambiar    Atrás: salir", 16f, secondary = true)
+        title = label("", if (mobile) 20f else 27f).apply { maxLines = 2 }
+        hint = label(if (mobile) "" else "OK: canales    ↑↓: cambiar    Atrás: salir", if (mobile) 14f else 16f, secondary = true)
         banner.addView(title, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(42)))
         banner.addView(hint, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(30)))
         root.addView(banner, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(96), Gravity.TOP).apply {
@@ -225,8 +237,8 @@ class PlayerActivity : ComponentActivity() {
         }
         root.addView(
             diagnosticsView,
-            FrameLayout.LayoutParams(dp(570), ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.END or Gravity.BOTTOM).apply {
-                setMargins(dp(18), dp(18), dp(18), dp(18))
+            FrameLayout.LayoutParams(if (mobile) ViewGroup.LayoutParams.MATCH_PARENT else dp(570), ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.END or Gravity.BOTTOM).apply {
+                setMargins(dp(18), dp(18), dp(18), dp(if (mobile) 72 else 18))
             },
         )
         guideOverlay = LinearLayout(this).apply {
@@ -261,12 +273,43 @@ class PlayerActivity : ComponentActivity() {
             adapter = guideAdapter
         }
         guideOverlay.addView(guideList, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
-        guideEmpty = label("Aún no hay favoritos. Mantén OK sobre un canal para añadirlo.", 16f, secondary = true).apply { visibility = View.GONE }
+        guideEmpty = label("Aún no hay favoritos. Mantén pulsado un canal para añadirlo.", 16f, secondary = true).apply { visibility = View.GONE }
         guideOverlay.addView(guideEmpty, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(58)))
-        guideOverlay.addView(label("OK: ver canal    Mantén OK: favorito", 14f, secondary = true), LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(34)))
-        root.addView(guideOverlay, FrameLayout.LayoutParams(dp(530), ViewGroup.LayoutParams.MATCH_PARENT, Gravity.START))
+        if (!mobile) guideOverlay.addView(label("OK: ver canal    Mantén OK: favorito", 14f, secondary = true), LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(34)))
+        if (mobile) addTouchControls(root)
+        val guideWidth = if (mobile && resources.configuration.screenWidthDp < 600) ViewGroup.LayoutParams.MATCH_PARENT else dp(530)
+        root.addView(guideOverlay, FrameLayout.LayoutParams(guideWidth, ViewGroup.LayoutParams.MATCH_PARENT, Gravity.START))
         setContentView(root)
         playerView.requestFocus()
+    }
+
+    private fun addTouchControls(root: FrameLayout) {
+        val controls = LinearLayout(this).apply {
+            gravity = Gravity.CENTER
+            setPadding(dp(8), dp(4), dp(8), dp(4))
+            setBackgroundColor(0xE6171717.toInt())
+        }
+        fun control(text: String, description: String, weight: Float = 1f, click: () -> Unit): Button =
+            action(text).apply {
+                contentDescription = description
+                setPadding(0, 0, 0, 0)
+                setOnClickListener { click() }
+                controls.addView(this, LinearLayout.LayoutParams(0, dp(48), weight))
+            }
+        control("‹", "Volver") { finish() }
+        control("−", "Canal anterior") { play(index - 1) }
+        playPause = control("▶", "Reproducir") {
+            player?.let { it.playWhenReady = !it.playWhenReady }
+        }
+        control("+", "Canal siguiente") { play(index + 1) }
+        control("Canales", "Abrir selector de canales", 1.6f) { showGuide() }
+        control("ⓘ", "Diagnóstico de reproducción") { toggleDiagnostics() }
+        touchControls = controls
+        root.addView(controls, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM))
+        playerView.setOnClickListener {
+            controls.visibility = if (controls.visibility == View.VISIBLE) View.GONE else View.VISIBLE
+            if (controls.visibility == View.VISIBLE) showBanner(autoHide = true)
+        }
     }
 
     override fun onStart() {
@@ -282,6 +325,12 @@ class PlayerActivity : ComponentActivity() {
         player = PlayerFactory.create(this, preferences, { currentDecoderOverride }, { currentAudioDecoderOverride }).also {
             it.addAnalyticsListener(diagnostics)
             it.addListener(object : Player.Listener {
+                override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
+                    playPause?.apply {
+                        text = if (playWhenReady) "Ⅱ" else "▶"
+                        contentDescription = if (playWhenReady) "Pausar" else "Reproducir"
+                    }
+                }
                 override fun onPlayerError(error: PlaybackException) {
                     if (error.errorCode == PlaybackException.ERROR_CODE_BEHIND_LIVE_WINDOW) {
                         scheduleRecovery("Volviendo al punto actual del directo…", immediate = retryAttempt == 0)
@@ -323,7 +372,7 @@ class PlayerActivity : ComponentActivity() {
                         cancelRecovery()
                         scheduleStableMark()
                         hasBeenReady = true
-                        hint.text = "OK: canales    ↑↓: cambiar    Atrás: salir"
+                        hint.text = if (BuildConfig.IS_MOBILE) "En directo" else "OK: canales    ↑↓: cambiar    Atrás: salir"
                         showBanner(autoHide = true)
                     } else if (playbackState == Player.STATE_BUFFERING) {
                         stableRunnable?.let(retryHandler::removeCallbacks)
@@ -515,6 +564,7 @@ class PlayerActivity : ComponentActivity() {
     }
 
     private fun showGuide() {
+        touchControls?.visibility = View.GONE
         guideOverlay.visibility = View.VISIBLE
         banner.visibility = View.GONE
         refreshGuide()
@@ -527,6 +577,7 @@ class PlayerActivity : ComponentActivity() {
     }
 
     private fun hideGuide() {
+        touchControls?.visibility = View.VISIBLE
         guideOverlay.visibility = View.GONE
         playerView.requestFocus()
         showBanner(autoHide = true)
@@ -604,7 +655,7 @@ class PlayerActivity : ComponentActivity() {
         lastPlaybackPositionMs = C.TIME_UNSET
         current.setMediaItem(item, true)
         current.prepare()
-        current.playWhenReady = true
+        if (!BuildConfig.IS_MOBILE) current.playWhenReady = true
     }
 
     private fun tryNextFallback(message: String): Boolean {

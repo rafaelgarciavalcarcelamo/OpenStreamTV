@@ -14,6 +14,7 @@ import android.widget.Switch
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.ComponentActivity
+import dev.openstream.tv.BuildConfig
 import dev.openstream.tv.R
 import dev.openstream.tv.data.BufferPreset
 import dev.openstream.tv.data.ChannelStabilityStore
@@ -28,18 +29,24 @@ class SettingsActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        useTvFullscreen()
+        if (!BuildConfig.IS_MOBILE) useTvFullscreen()
         preferences = Preferences(this)
         buildUi()
     }
 
     private fun buildUi() {
-        val scroll = ScrollView(this).apply { setBackgroundColor(getColor(R.color.ink)) }
+        val mobile = BuildConfig.IS_MOBILE
+        val scroll = ScrollView(this).apply {
+            setBackgroundColor(getColor(R.color.ink))
+            if (mobile) applyTouchInsets()
+        }
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(36), dp(24), dp(36), dp(36))
+            val horizontal = dp(if (mobile) 16 else 36)
+            setPadding(horizontal, dp(24), horizontal, dp(36))
         }
-        root.addView(label("Ajustes de la tele", 30f), rowParams(64))
+        if (mobile) root.addView(action("Volver").apply { setOnClickListener { finish() } }, rowParams(48))
+        root.addView(label(if (mobile) "Ajustes" else "Ajustes de la tele", 30f), rowParams(64))
         root.addView(label("Todo está preparado para una reproducción estable. Puedes dejar estos ajustes como están.", 16f, true), rowParams(54))
 
         root.addView(sectionTitle("Lo básico"))
@@ -47,8 +54,10 @@ class SettingsActivity : ComponentActivity() {
             text = "Abrir la tele al encender el aparato"
             setTextColor(getColor(R.color.text_primary)); isChecked = preferences.launchOnBoot; isFocusable = true
         }
-        root.addView(launchOnBoot, rowParams(58))
-        root.addView(label("En algunos aparatos Android puede pedir que permitas el inicio automático.", 14f, true), rowParams(42))
+        if (!mobile) {
+            root.addView(launchOnBoot, rowParams(58))
+            root.addView(label("En algunos aparatos Android puede pedir que permitas el inicio automático.", 14f, true), rowParams(42))
+        }
         val rememberLastChannel = Switch(this).apply {
             text = "Recordar el último canal reproducido"
             setTextColor(getColor(R.color.text_primary)); isChecked = preferences.rememberLastChannel; isFocusable = true
@@ -64,7 +73,7 @@ class SettingsActivity : ComponentActivity() {
             text = "Preguntar antes de salir"
             setTextColor(getColor(R.color.text_primary)); isChecked = preferences.confirmExit; isFocusable = true
         }
-        root.addView(confirmExit, rowParams(58))
+        if (!mobile) root.addView(confirmExit, rowParams(58))
         val refreshOnLaunch = Switch(this).apply {
             text = "Actualizar lista y guía al abrir (conservar copia si falla)"
             setTextColor(getColor(R.color.text_primary)); isChecked = preferences.refreshSourcesOnLaunch; isFocusable = true
@@ -80,25 +89,27 @@ class SettingsActivity : ComponentActivity() {
             text = "Avisar arriba cuando no haya una VPN activa"
             setTextColor(getColor(R.color.text_primary)); isChecked = preferences.showVpnWarning; isFocusable = true
         }
-        root.addView(showVpnWarning, rowParams(58))
+        if (!mobile) root.addView(showVpnWarning, rowParams(58))
         val automaticUpdates = Switch(this).apply {
             text = "Avisar cuando haya una nueva versión en GitHub"
             setTextColor(getColor(R.color.text_primary)); isChecked = preferences.automaticUpdateChecks; isFocusable = true
         }
-        root.addView(automaticUpdates, rowParams(58))
-        root.addView(action("Buscar actualización ahora").apply {
-            setOnClickListener { AppUpdateChecker(this@SettingsActivity, preferences).check(force = true) }
-        }, rowParams(54))
+        if (!mobile) {
+            root.addView(automaticUpdates, rowParams(58))
+            root.addView(action("Buscar actualización ahora").apply {
+                setOnClickListener { AppUpdateChecker(this@SettingsActivity, preferences).check(force = true) }
+            }, rowParams(54))
+        }
 
         root.addView(sectionTitle("Portada y canales"))
-        root.addView(action("Personalizar canales y su orden").apply {
+        if (!mobile) root.addView(action("Personalizar canales y su orden").apply {
             setOnClickListener { startActivity(Intent(this@SettingsActivity, PersonalizationActivity::class.java)) }
         }, rowParams(54))
         val smartHomeOrder = Switch(this).apply {
             text = "Priorizar favoritos, más vistos y deportes destacados"
             setTextColor(getColor(R.color.text_primary)); isChecked = preferences.smartHomeOrder; isFocusable = true
         }
-        root.addView(smartHomeOrder, rowParams(58))
+        if (!mobile) root.addView(smartHomeOrder, rowParams(58))
         val homeCountValues = listOf(12, 24, 36, 48, 60)
         val homeCount = Spinner(this).apply {
             adapter = ArrayAdapter(this@SettingsActivity, android.R.layout.simple_spinner_dropdown_item,
@@ -106,8 +117,8 @@ class SettingsActivity : ComponentActivity() {
             setSelection(homeCountValues.indexOf(preferences.homeChannelCount).coerceAtLeast(0))
             isFocusable = true
         }
-        root.addView(settingRow("Canales visibles en Inicio", homeCount))
-        root.addView(action("Borrar historial de canales más vistos").apply {
+        if (!mobile) root.addView(settingRow("Canales visibles en Inicio", homeCount))
+        if (!mobile) root.addView(action("Borrar historial de canales más vistos").apply {
             setOnClickListener {
                 preferences.clearWatchHistory()
                 Toast.makeText(this@SettingsActivity, "Historial de visualización borrado", Toast.LENGTH_SHORT).show()
@@ -315,12 +326,18 @@ class SettingsActivity : ComponentActivity() {
     }
 
     private fun settingRow(title: String, control: android.view.View): LinearLayout = LinearLayout(this).apply {
-        orientation = LinearLayout.HORIZONTAL
+        val narrow = BuildConfig.IS_MOBILE && resources.configuration.screenWidthDp < 600
+        orientation = if (narrow) LinearLayout.VERTICAL else LinearLayout.HORIZONTAL
         gravity = Gravity.CENTER_VERTICAL
         setPadding(dp(12), dp(6), dp(12), dp(6))
-        addView(label(title, 16f), LinearLayout.LayoutParams(dp(220), ViewGroup.LayoutParams.MATCH_PARENT))
-        addView(control, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f))
-        layoutParams = rowParams(64)
+        if (narrow) {
+            addView(label(title, 16f), rowParams(30))
+            addView(control, rowParams(48))
+        } else {
+            addView(label(title, 16f), LinearLayout.LayoutParams(dp(220), ViewGroup.LayoutParams.MATCH_PARENT))
+            addView(control, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f))
+        }
+        layoutParams = rowParams(if (narrow) 90 else 64)
     }
 
     private fun rowParams(height: Int) = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(height))

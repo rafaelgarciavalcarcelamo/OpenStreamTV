@@ -1,5 +1,11 @@
 # Historial de cambios
 
+## 0.16.0 — 2026-11-13
+
+- APK independiente para teléfonos y tablets Android, con catálogo adaptable, navegación táctil y controles de reproducción en pantalla.
+- Gestión de fuentes M3U, Xtream y archivos locales, favoritos, categorías y guía XMLTV en la edición móvil.
+- Edición Android TV y Fire TV con su interfaz de mando, identificador y firma de actualización.
+
 ## 0.15.0 — 2026-11-13
 
 - Portada y navegación renovadas, con logos también en el catálogo y el selector del reproductor.

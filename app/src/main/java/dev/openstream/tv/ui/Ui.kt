@@ -6,12 +6,24 @@ import android.graphics.Typeface
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.TextView
 import dev.openstream.tv.R
 
 fun Context.dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
+
+fun View.applyTouchInsets() {
+    ViewCompat.setOnApplyWindowInsetsListener(this) { view, insets ->
+        val safe = insets.getInsets(
+            WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout() or WindowInsetsCompat.Type.ime(),
+        )
+        view.setPadding(safe.left, safe.top, safe.right, safe.bottom)
+        insets
+    }
+}
 
 @Suppress("DEPRECATION")
 fun Activity.useTvFullscreen() {

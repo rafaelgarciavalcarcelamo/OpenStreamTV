@@ -1,6 +1,6 @@
 # OpenStream TV
 
-Reproductor IPTV de código abierto para Android TV y Amazon Fire TV. Rápido de usar con mando, pensado para directos estables y creado desde cero.
+Reproductor IPTV de código abierto con dos ediciones. **TV** está diseñada para el mando de Android TV y Amazon Fire TV. **Móvil** ofrece controles táctiles para teléfonos y tablets Android.
 
 [![Última versión](https://img.shields.io/github/v/release/rafaelgarciavalcarcelamo/OpenStreamTV?label=versi%C3%B3n)](https://github.com/rafaelgarciavalcarcelamo/OpenStreamTV/releases/latest)
 [![Android](https://img.shields.io/badge/Android%20TV-6.0%2B-3DDC84)](https://github.com/rafaelgarciavalcarcelamo/OpenStreamTV/releases/latest)
@@ -8,17 +8,23 @@ Reproductor IPTV de código abierto para Android TV y Amazon Fire TV. Rápido de
 
 > No incluye canales, listas, cuentas ni contenido. Usa únicamente fuentes M3U/XMLTV que tengas derecho a reproducir.
 
-**[Descargar la última versión](https://github.com/rafaelgarciavalcarcelamo/OpenStreamTV/releases/latest)** · [Instalación](#instalación-en-android-tv-y-fire-tv) · [Privacidad](PRIVACY.md) · [Seguridad](SECURITY.md) · [English](docs/en/README.md)
+**[Descargar la última versión](https://github.com/rafaelgarciavalcarcelamo/OpenStreamTV/releases/latest)** · [Instalación](#instalación) · [Privacidad](PRIVACY.md) · [Seguridad](SECURITY.md) · [English](docs/en/README.md)
 
-## Instalación en Android TV y Fire TV
+## Compilar las dos ediciones
 
-1. Abre la página de [Releases](https://github.com/rafaelgarciavalcarcelamo/OpenStreamTV/releases/latest) desde el televisor o descarga el APK en otro dispositivo y pásalo por USB.
-2. Descarga el archivo `OpenStreamTV-<versión>-release.apk` de la versión más reciente.
+Ejecuta `./gradlew assembleTvRelease assembleMobileRelease` (en Windows, `gradlew.bat`). Gradle genera un APK en `app/build/outputs/apk/tv/release/` y otro en `app/build/outputs/apk/mobile/release/`. Las dos ediciones usan identificadores distintos y guardan sus listas y preferencias por separado.
+
+En la app móvil puedes importar tus fuentes desde **Mis listas** y ver los canales directamente en el dispositivo. Para administrar las listas de una TV desde el teléfono, usa el panel web del televisor.
+
+## Instalación
+
+1. Abre la página de [Releases](https://github.com/rafaelgarciavalcarcelamo/OpenStreamTV/releases/latest).
+2. Descarga `OpenStreamTV-<versión>-tv.apk` para Android TV o Fire TV, o `OpenStreamTV-<versión>-mobile.apk` para un teléfono o una tablet Android. En la TV también puedes copiar el archivo por USB.
 3. Si Android lo solicita, permite la instalación desde la aplicación con la que abriste el APK (navegador o gestor de archivos).
-4. Instala, abre OpenStream TV y elige **Añadir lista**.
+4. Instala, abre OpenStream y entra en **Mis listas** para añadir tu primera fuente.
 5. Añade una lista M3U, una cuenta Xtream autorizada y, opcionalmente, una guía XMLTV.
 
-Las actualizaciones se avisan automáticamente una vez al día. También puedes buscarlas manualmente desde **Ajustes → Buscar actualización ahora**.
+La edición TV comprueba las actualizaciones automáticamente una vez al día. También puedes buscarlas desde **Ajustes → Buscar actualización ahora**. Las actualizaciones de la edición móvil se descargan desde GitHub Releases.
 
 > Si Android indica que la APK de pruebas instalada tiene otra firma, guarda primero los datos de tus fuentes. Desinstalar la app borra sus listas y ajustes locales.
 

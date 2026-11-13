@@ -11,6 +11,7 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.recyclerview.widget.RecyclerView
 import dev.openstream.tv.R
+import dev.openstream.tv.BuildConfig
 import dev.openstream.tv.data.Channel
 import dev.openstream.tv.data.Program
 import java.text.SimpleDateFormat
@@ -170,7 +171,8 @@ class ChannelAdapter(
             isFavorite -> "quitar de favoritos"
             else -> "añadir a favoritos"
         }
-        holder.root.contentDescription = "Canal ${holder.number.text}, ${channel.name}. ${currentProgram ?: channel.group}. Mantén OK para $longPress"
+        val press = if (BuildConfig.IS_MOBILE) "Mantén pulsado" else "Mantén OK"
+        holder.root.contentDescription = "Canal ${holder.number.text}, ${channel.name}. ${currentProgram ?: channel.group}. $press para $longPress"
         ChannelArtworkLoader.bind(channel.logoUrl, holder.logo, holder.logoFallback)
         holder.root.setOnClickListener { onClick(channel) }
         holder.root.setOnLongClickListener { onLongClick(channel); true }

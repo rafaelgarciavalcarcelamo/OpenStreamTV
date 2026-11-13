@@ -6,6 +6,6 @@ import dev.openstream.tv.local.LocalControlRuntime
 class OpenStreamApplication : Application() {
     override fun onCreate() {
         super.onCreate()
-        LocalControlRuntime.start(this)
+        if (!BuildConfig.IS_MOBILE) LocalControlRuntime.start(this)
     }
 }
