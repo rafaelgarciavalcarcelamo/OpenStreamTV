@@ -1,7 +1,7 @@
 {
-  "versionCode": 21,
-  "versionName": "0.14.0",
-  "apkUrl": "https://raw.githubusercontent.com/rafaelgarciavalcarcelamo/OpenStreamTV/main/downloads/OpenStreamTV-0.14.0.apk",
-  "sha256": "F3E97C267EBEF2F5B2854396EE35C61BA748DBEF1DA2602D66AB8C0D83AFD964",
-  "notes": "Varias listas M3U, Xtream o locales con una única lista activa, caché independiente, migración automática y credenciales cifradas."
+  "versionCode": 22,
+  "versionName": "0.15.0",
+  "apkUrl": "https://github.com/rafaelgarciavalcarcelamo/OpenStreamTV/releases/download/v0.15.0/OpenStreamTV-0.15.0-release.apk",
+  "sha256": "1E374DD4FE1E67D187A688BBFA92E83B233F0B9866E441752DAC81FFEC2F1C12",
+  "notes": "Nueva portada, logos en el catálogo, categorías y listas recuperables, interruptor de guía EPG y gestión desde el móvil."
 }
