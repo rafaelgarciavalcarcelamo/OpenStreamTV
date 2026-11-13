@@ -79,6 +79,12 @@ class LocalControlServer(
                 val id = session.uri.substringAfter("/api/playlists/").substringBefore('/')
                 playlistMutation { callback -> repository.refreshPlaylistSource(id, callback) }
             }
+            session.uri.matches(Regex("/api/playlists/[^/]+/enabled")) && session.method == Method.POST -> authorized(session) {
+                val id = session.uri.substringAfter("/api/playlists/").substringBefore('/')
+                val enabled = bodyJson(session).opt("enabled")
+                require(enabled is Boolean) { "Indica si la lista debe estar habilitada" }
+                playlistStateMutation<Unit> { repository.setPlaylistSourceEnabled(id, enabled, it) }
+            }
             session.uri.matches(Regex("/api/playlists/[^/]+")) && session.method == Method.PUT -> authorized(session) {
                 val id = session.uri.substringAfterLast('/')
                 val body = bodyJson(session)
@@ -95,14 +101,7 @@ class LocalControlServer(
             }
             session.uri.matches(Regex("/api/playlists/[^/]+")) && session.method == Method.DELETE -> authorized(session) {
                 val id = session.uri.substringAfterLast('/')
-                val result = awaitResult<Playlist?> { repository.deletePlaylistSource(id, it) }
-                result.fold(
-                    onSuccess = {
-                        notifyChanged()
-                        json(Response.Status.OK, JSONObject().put("ok", true))
-                    },
-                    onFailure = { json(Response.Status.BAD_REQUEST, errorJson(friendlyError(it))) },
-                )
+                playlistStateMutation<Playlist?> { repository.deletePlaylistSource(id, it) }
             }
             else -> json(Response.Status.NOT_FOUND, errorJson("No encontrado"))
         }
@@ -110,11 +109,24 @@ class LocalControlServer(
 
     private fun playlistsResponse(): Response {
         val activeId = repository.activePlaylistSource()?.id
+        val hidden = repository.hiddenPlaylistSourceIds()
         val items = JSONArray().apply {
-            repository.listPlaylistSources().forEach { source -> put(source.toPublicJson(source.id == activeId)) }
+            repository.listPlaylistSources().forEach { source ->
+                val enabled = source.id !in hidden
+                put(source.toPublicJson(source.id == activeId && enabled, enabled))
+            }
         }
         return json(Response.Status.OK, JSONObject().put("ok", true).put("playlists", items))
     }
+
+    private fun <T> playlistStateMutation(operation: ((Result<T>) -> Unit) -> Unit): Response =
+        awaitResult(operation).fold(
+            onSuccess = {
+                notifyChanged()
+                json(Response.Status.OK, JSONObject().put("ok", true))
+            },
+            onFailure = { json(Response.Status.BAD_REQUEST, errorJson(friendlyError(it))) },
+        )
 
     private fun playlistMutation(operation: ((Result<Playlist>) -> Unit) -> Unit): Response {
         val result = awaitResult(operation)
@@ -200,11 +212,12 @@ class LocalControlServer(
         return result.get() ?: Result.failure(IllegalStateException("No se recibió respuesta"))
     }
 
-    private fun PlaylistSource.toPublicJson(active: Boolean): JSONObject = JSONObject()
+    private fun PlaylistSource.toPublicJson(active: Boolean, enabled: Boolean): JSONObject = JSONObject()
         .put("id", id)
         .put("name", name)
         .put("type", type.name)
         .put("active", active)
+        .put("enabled", enabled)
         .put("source", sourceLabel())
         .put("username", maskedUsername())
         .put("updatedAt", File(context.filesDir, cacheFile).takeIf(File::exists)?.lastModified() ?: 0L)

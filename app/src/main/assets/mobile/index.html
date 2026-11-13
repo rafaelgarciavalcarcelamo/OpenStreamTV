@@ -95,7 +95,35 @@
     async function boot(){state.device=await fetch('/api/device').then(r=>r.json());await loadPlaylists();$('pairScreen').classList.add('hidden');$('app').classList.remove('hidden');renderDevice();setInterval(checkConnection,12000)}
     function renderDevice(){$('deviceCard').innerHTML=`<div class="tvicon">📺</div><div class="grow"><div class="title">${esc(state.device.name)}</div><div class="sub">${esc(state.device.model)} · versión ${esc(state.device.version)}</div></div><span class="badge active">ESTA TV</span>`}
     async function loadPlaylists(){const data=await api('/api/playlists');state.playlists=data.playlists;renderPlaylists()}
-    function renderPlaylists(){const box=$('playlists');if(!state.playlists.length){box.innerHTML='<div class="card empty"><span class="emoji">📡</span><b>Todavía no hay listas</b><p>Añade la primera con el botón rojo.</p></div>';return}box.innerHTML=state.playlists.map(p=>`<article class="card"><div class="source-head"><div class="grow"><div class="title">${esc(p.name)}</div><div class="sub">${esc(p.type==='XTREAM'?'Usuario y contraseña':p.type==='M3U'?'Enlace M3U':'Archivo')} · ${esc(p.source)}</div>${p.username?`<div class="sub">Usuario: ${esc(p.username)}</div>`:''}</div><span class="badge ${p.active?'active':''}">${p.active?'ACTIVA':esc(p.type)}</span></div><div class="actions">${p.active?'':`<button class="btn small primary" onclick="activate('${p.id}')">Usar esta</button>`}<button class="btn small" onclick="refreshSource('${p.id}')">Actualizar</button>${p.type==='FILE'?'':`<button class="btn small" onclick="openEdit('${p.id}')">Modificar</button>`}<button class="btn small danger" onclick="removeSource('${p.id}')">Eliminar</button></div></article>`).join('')}
+    function renderPlaylists(){
+      const box=$('playlists');
+      if(!state.playlists.length){
+        box.innerHTML='<div class="card empty"><span class="emoji">📡</span><b>Todavía no hay listas</b><p>Añade la primera con el botón rojo.</p></div>';
+        return;
+      }
+      const available=state.playlists.filter(p=>p.enabled!==false);
+      const disabled=state.playlists.filter(p=>p.enabled===false);
+      box.innerHTML=available.map(renderPlaylist).join('');
+      if(disabled.length){
+        box.innerHTML+=`<details><summary>Listas desactivadas (${disabled.length})</summary>${disabled.map(renderPlaylist).join('')}</details>`;
+      }
+    }
+    function renderPlaylist(p){
+      const id=esc(p.id);
+      const type=p.type==='XTREAM'?'Usuario y contraseña':p.type==='M3U'?'Enlace M3U':'Archivo';
+      const available=p.enabled!==false;
+      const actions=available
+        ? `${p.active?'':`<button class="btn small primary" onclick="activate('${id}')">Usar esta</button>`}
+           ${p.type==='FILE'?'':`<button class="btn small" onclick="refreshSource('${id}')">Actualizar</button>
+             <button class="btn small" onclick="openEdit('${id}')">Modificar</button>`}
+           <button class="btn small" onclick="setSourceEnabled('${id}',false)">Desactivar</button>`
+        : `<button class="btn small" onclick="setSourceEnabled('${id}',true)">Reactivar</button>`;
+      return `<article class="card"><div class="source-head"><div class="grow">
+        <div class="title">${esc(p.name)}</div><div class="sub">${type} · ${esc(p.source)}</div>
+        ${p.username?`<div class="sub">Usuario: ${esc(p.username)}</div>`:''}
+        </div><span class="badge ${p.active?'active':''}">${p.active?'ACTIVA':available?esc(p.type):'DESACTIVADA'}</span></div>
+        <div class="actions">${actions}<button class="btn small danger" onclick="removeSource('${id}')">Eliminar</button></div></article>`;
+    }
     function openAdd(){$('editId').value='';$('formTitle').textContent='Añadir una lista';$('formIntro').textContent='Elige la forma que te haya dado tu proveedor.';$('sourceName').value=state.playlists.length?'Lista alternativa':'Lista principal';$('m3uUrl').value='';$('server').value='';$('username').value='';$('password').value='';$('typeTabs').classList.remove('hidden');setType('M3U');$('sourceDialog').showModal()}
     function setType(type){$('sourceType').value=type;$('m3uFields').classList.toggle('hidden',type!=='M3U');$('xtreamFields').classList.toggle('hidden',type!=='XTREAM');$('m3uTab').classList.toggle('on',type==='M3U');$('xtreamTab').classList.toggle('on',type==='XTREAM')}
     async function saveSource(event){event.preventDefault();const type=$('sourceType').value;const body=type==='M3U'?{name:$('sourceName').value,url:$('m3uUrl').value}:{name:$('sourceName').value,server:$('server').value,username:$('username').value,password:$('password').value};await busy(event.submitter,async()=>{const result=await api(type==='M3U'?'/api/playlists/m3u':'/api/playlists/xtream',{method:'POST',body:JSON.stringify(body)});$('sourceDialog').close();await loadPlaylists();toast(`${result.channels} canales guardados`)})}
@@ -103,6 +131,13 @@
     async function saveEdit(event){event.preventDefault();const id=$('editSourceId').value;const body={name:$('editName').value,endpoint:$('editEndpoint').value,username:$('editUsername').value,password:$('editPassword').value};await busy(event.submitter,async()=>{const result=await api(`/api/playlists/${id}`,{method:'PUT',body:JSON.stringify(body)});$('editDialog').close();await loadPlaylists();toast(`Guardada · ${result.channels} canales`)})}
     async function activate(id){await busy(null,async()=>{const result=await api(`/api/playlists/${id}/activate`,{method:'POST'});await loadPlaylists();toast(`${result.name} está activa`)})}
     async function refreshSource(id){await busy(null,async()=>{const result=await api(`/api/playlists/${id}/refresh`,{method:'POST'});await loadPlaylists();toast(`Actualizada · ${result.channels} canales`)})}
+    async function setSourceEnabled(id,enabled){
+      await busy(null,async()=>{
+        await api(`/api/playlists/${id}/enabled`,{method:'POST',body:JSON.stringify({enabled})});
+        await loadPlaylists();
+        toast(enabled?'Lista reactivada':'Lista desactivada');
+      });
+    }
     async function removeSource(id){const p=state.playlists.find(x=>x.id===id);if(!confirm(`¿Eliminar “${p?.name||'esta lista'}”? Las demás no cambiarán.`))return;await busy(null,async()=>{await api(`/api/playlists/${id}`,{method:'DELETE'});await loadPlaylists();toast('Lista eliminada')})}
     async function busy(button,fn){document.body.classList.add('loading');const old=button?.textContent;if(button)button.textContent='Comprobando…';try{await fn()}catch(e){toast(e.message)}finally{document.body.classList.remove('loading');if(button)button.textContent=old}}
     async function checkConnection(){try{await fetch('/api/device',{cache:'no-store'});$('online').innerHTML='<span class="dot"></span>Conectada'}catch{$('online').textContent='Sin conexión'}}

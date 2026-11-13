@@ -1,6 +1,9 @@
 package dev.openstream.tv.ui
 
+import android.content.BroadcastReceiver
+import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
@@ -20,6 +23,7 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.activity.ComponentActivity
 import androidx.activity.OnBackPressedCallback
+import androidx.core.content.ContextCompat
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import androidx.media3.common.C
@@ -41,6 +45,7 @@ import dev.openstream.tv.data.DecoderPreference
 import dev.openstream.tv.data.HomeChannelRanker
 import dev.openstream.tv.data.Preferences
 import dev.openstream.tv.data.ResizeMode
+import dev.openstream.tv.local.LocalControlServer
 import dev.openstream.tv.player.PlaybackDiagnostics
 import dev.openstream.tv.player.PlayerFactory
 import dev.openstream.tv.player.RecoveryDelayPolicy
@@ -59,6 +64,9 @@ class PlayerActivity : ComponentActivity() {
     private lateinit var guideEmpty: TextView
     private lateinit var preferences: Preferences
     private lateinit var stabilityStore: ChannelStabilityStore
+    private lateinit var repository: AppRepository
+    private var playbackSourceId: String? = null
+    private var playlistReceiverRegistered = false
     private var player: ExoPlayer? = null
     private var channels = emptyList<Channel>()
     private var index = 0
@@ -84,6 +92,18 @@ class PlayerActivity : ComponentActivity() {
     private var bannerHideRunnable: Runnable? = null
     private var numberCommitRunnable: Runnable? = null
     private var numberBuffer = ""
+    private val fallbackChannelIds = ArrayDeque<String>()
+
+    private val playlistReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            if (intent.action == LocalControlServer.ACTION_PLAYLISTS_CHANGED && !isPlaybackSourceAvailable()) finish()
+        }
+    }
+
+    private fun isPlaybackSourceAvailable(): Boolean =
+        playbackSourceId?.let { id ->
+            id !in repository.hiddenPlaylistSourceIds() && repository.listPlaylistSources().any { it.id == id }
+        } == true
 
     private val networkCallback = object : ConnectivityManager.NetworkCallback() {
         override fun onLost(network: Network) {
@@ -114,10 +134,15 @@ class PlayerActivity : ComponentActivity() {
             val current = player
             if (current != null) {
                 val now = SystemClock.elapsedRealtime()
-                if (current.playbackState == Player.STATE_BUFFERING && bufferingSinceMs > 0 && now - bufferingSinceMs >= MAX_BUFFERING_MS) {
-                    scheduleRecovery("El flujo tarda demasiado · reiniciando…", immediate = true)
+                val bufferingLimit = if (!hasBeenReady && fallbackChannelIds.isNotEmpty()) INITIAL_FALLBACK_BUFFERING_MS else MAX_BUFFERING_MS
+                if (current.playbackState == Player.STATE_BUFFERING && bufferingSinceMs > 0 && now - bufferingSinceMs >= bufferingLimit) {
+                    if (!tryNextFallback("Canal sin señal · probando alternativa…")) {
+                        scheduleRecovery("El flujo tarda demasiado · reiniciando…", immediate = true)
+                    }
                 } else if (current.playbackState == Player.STATE_ENDED && recoveryRunnable == null) {
-                    scheduleRecovery("El directo terminó · intentando volver…")
+                    if (!tryNextFallback("El directo terminó · probando alternativa…")) {
+                        scheduleRecovery("El directo terminó · intentando volver…")
+                    }
                 } else if (current.isPlaying) {
                     val position = current.currentPosition
                     stagnantChecks = if (lastPlaybackPositionMs != C.TIME_UNSET && position - lastPlaybackPositionMs < MIN_PROGRESS_MS) stagnantChecks + 1 else 0
@@ -141,7 +166,10 @@ class PlayerActivity : ComponentActivity() {
         window.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_FULLSCREEN or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
         preferences = Preferences(this)
         stabilityStore = ChannelStabilityStore(this)
-        val savedChannels = AppRepository(this).loadSavedPlaylist()?.channels.orEmpty()
+        repository = AppRepository(this)
+        val savedSource = repository.activePlaylistSource()
+        playbackSourceId = savedSource?.id
+        val savedChannels = preferences.visibleChannels(savedSource?.let(repository::loadSavedPlaylist))
         channels = HomeChannelRanker.rank(
             channels = savedChannels,
             pinnedIds = preferences.pinnedChannelOrder,
@@ -151,6 +179,10 @@ class PlayerActivity : ComponentActivity() {
             smart = false,
         )
         val channelId = intent.getStringExtra(EXTRA_CHANNEL_ID)
+        intent.getStringArrayListExtra(EXTRA_FALLBACK_CHANNEL_IDS)
+            .orEmpty()
+            .filterNot { it == channelId }
+            .forEach(fallbackChannelIds::addLast)
         index = channels.indexOfFirst { it.id == channelId }.coerceAtLeast(0)
         buildUi()
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
@@ -239,6 +271,13 @@ class PlayerActivity : ComponentActivity() {
 
     override fun onStart() {
         super.onStart()
+        ContextCompat.registerReceiver(this, playlistReceiver, IntentFilter(LocalControlServer.ACTION_PLAYLISTS_CHANGED),
+            ContextCompat.RECEIVER_NOT_EXPORTED)
+        playlistReceiverRegistered = true
+        if (!isPlaybackSourceAvailable()) {
+            finish()
+            return
+        }
         registerNetworkMonitor()
         player = PlayerFactory.create(this, preferences, { currentDecoderOverride }, { currentAudioDecoderOverride }).also {
             it.addAnalyticsListener(diagnostics)
@@ -252,6 +291,7 @@ class PlayerActivity : ComponentActivity() {
                         .filterIsInstance<HttpDataSource.InvalidResponseCodeException>()
                         .firstOrNull()
                     if (httpError?.responseCode in setOf(401, 403)) {
+                        if (tryNextFallback("Canal rechazado · probando alternativa…")) return
                         scheduleRecovery("Acceso rechazado · revisa las credenciales", unauthorized = true)
                         return
                     }
@@ -273,6 +313,7 @@ class PlayerActivity : ComponentActivity() {
                     }
                     val channel = channels.getOrNull(index)
                     if (channel != null) stabilityStore.recordSourceFailure(channel.id, error.errorCodeName)
+                    if (tryNextFallback("Canal no disponible · probando alternativa…")) return
                     scheduleRecovery("Error ${error.errorCodeName} · reconectando…")
                 }
                 override fun onPlaybackStateChanged(playbackState: Int) {
@@ -294,7 +335,9 @@ class PlayerActivity : ComponentActivity() {
                         hint.text = "Cargando canal…"
                         showBanner()
                     } else if (playbackState == Player.STATE_ENDED) {
-                        scheduleRecovery("El directo terminó · intentando volver…")
+                        if (!tryNextFallback("El directo terminó · probando alternativa…")) {
+                            scheduleRecovery("El directo terminó · intentando volver…")
+                        }
                     }
                 }
             })
@@ -312,6 +355,7 @@ class PlayerActivity : ComponentActivity() {
         stableRunnable = null
         index = (newIndex + channels.size) % channels.size
         val channel = channels[index]
+        fallbackChannelIds.remove(channel.id)
         if (preferences.rememberLastChannel) preferences.lastChannelId = channel.id
         val profile = stabilityStore.get(channel.id)
         currentDecoderOverride = if (profile.forceSoftwareVideo) DecoderPreference.SOFTWARE else null
@@ -374,6 +418,10 @@ class PlayerActivity : ComponentActivity() {
     }
 
     override fun onStop() {
+        if (playlistReceiverRegistered) {
+            unregisterReceiver(playlistReceiver)
+            playlistReceiverRegistered = false
+        }
         retryHandler.removeCallbacksAndMessages(null)
         recoveryRunnable = null
         stableRunnable = null
@@ -385,6 +433,11 @@ class PlayerActivity : ComponentActivity() {
         player?.release()
         player = null
         super.onStop()
+    }
+
+    override fun onDestroy() {
+        repository.shutdown()
+        super.onDestroy()
     }
 
     private fun adaptAfterRebuffer() {
@@ -554,6 +607,20 @@ class PlayerActivity : ComponentActivity() {
         current.playWhenReady = true
     }
 
+    private fun tryNextFallback(message: String): Boolean {
+        while (fallbackChannelIds.isNotEmpty()) {
+            val nextId = fallbackChannelIds.removeFirst()
+            val nextIndex = channels.indexOfFirst { it.id == nextId }
+            if (nextIndex >= 0 && nextIndex != index) {
+                hint.text = message
+                showBanner()
+                play(nextIndex)
+                return true
+            }
+        }
+        return false
+    }
+
     private fun isNetworkAvailable(): Boolean {
         val manager = connectivityManager ?: return true
         val network = manager.activeNetwork ?: return false
@@ -584,8 +651,10 @@ class PlayerActivity : ComponentActivity() {
 
     companion object {
         const val EXTRA_CHANNEL_ID = "channel_id"
+        const val EXTRA_FALLBACK_CHANNEL_IDS = "fallback_channel_ids"
         private const val WATCHDOG_INTERVAL_MS = 5_000L
         private const val MAX_BUFFERING_MS = 40_000L
+        private const val INITIAL_FALLBACK_BUFFERING_MS = 12_000L
         private const val MIN_PROGRESS_MS = 250L
         private const val MAX_STAGNANT_CHECKS = 4
         private const val STABLE_PLAYBACK_MS = 120_000L

@@ -1,6 +1,12 @@
 # Historial de cambios
 
-## 0.15.0 — 2026-11-10
+## 0.15.0 — 2026-11-13
+
+- Portada y navegación renovadas, con logos también en el catálogo y el selector del reproductor.
+- Ocultación reversible de canales y categorías completas, con preferencias de categorías por lista IPTV.
+- Desactivación y reactivación de listas desde la TV y el gestor web local.
+- Interruptor de EPG en Ajustes y diagnóstico automático en el menú lateral.
+- Inicio más ligero, con hasta 12 canales, guía indexada y recuperación de reproducción desde la portada.
 
 - Control web local adaptado a iPhone y Android, alojado directamente por OpenStream TV.
 - Vinculación sencilla mediante código QR y código de seis cifras que el móvil recuerda.

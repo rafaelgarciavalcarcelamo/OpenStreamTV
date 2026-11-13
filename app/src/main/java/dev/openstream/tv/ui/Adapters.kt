@@ -5,6 +5,8 @@ import android.text.TextUtils
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
+import android.widget.FrameLayout
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.recyclerview.widget.RecyclerView
@@ -15,7 +17,10 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-class GroupAdapter(private val onClick: (String) -> Unit) : RecyclerView.Adapter<GroupAdapter.Holder>() {
+class GroupAdapter(
+    private val onOpen: (String) -> Unit,
+    private val onHide: (String) -> Unit,
+) : RecyclerView.Adapter<GroupAdapter.Holder>() {
     private var items = emptyList<Pair<String, Int>>()
     private var selected = "Todos"
 
@@ -58,8 +63,12 @@ class GroupAdapter(private val onClick: (String) -> Unit) : RecyclerView.Adapter
         holder.root.isSelected = name == selected
         holder.name.typeface = if (name == selected) Typeface.DEFAULT_BOLD else Typeface.DEFAULT
         holder.name.setTextColor(holder.root.context.getColor(if (name == selected) R.color.accent else R.color.text_primary))
-        holder.root.contentDescription = "$name, $count canales${if (name == selected) ", seleccionada" else ""}"
-        holder.root.setOnClickListener { selected = name; notifyDataSetChanged(); onClick(name) }
+        val canHide = name != "Todos" && name != "Favoritos"
+        val hint = if (canHide) ". Mantén OK para ver opciones" else ""
+        holder.root.contentDescription = "$name, $count canales${if (name == selected) ", seleccionada" else ""}$hint"
+        holder.root.setOnClickListener { selected = name; notifyDataSetChanged(); onOpen(name) }
+        holder.root.setOnLongClickListener(if (canHide) View.OnLongClickListener { onHide(name); true } else null)
+        holder.root.isLongClickable = canHide
     }
 
     override fun getItemCount() = items.size
@@ -70,6 +79,7 @@ class GroupAdapter(private val onClick: (String) -> Unit) : RecyclerView.Adapter
 class ChannelAdapter(
     private val onClick: (Channel) -> Unit,
     private val onLongClick: (Channel) -> Unit,
+    private val opensChannelActions: Boolean = false,
 ) : RecyclerView.Adapter<ChannelAdapter.Holder>() {
     private var items = emptyList<Channel>()
     private var programs = emptyMap<String, Program>()
@@ -108,6 +118,21 @@ class ChannelAdapter(
             gravity = Gravity.CENTER
             background = context.getDrawable(R.drawable.number_tile)
         }
+        val artwork = FrameLayout(context).apply {
+            background = context.getDrawable(R.drawable.number_tile)
+            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS
+        }
+        val logoFallback = context.label("TV", 14f, secondary = true).apply {
+            gravity = Gravity.CENTER
+            typeface = Typeface.DEFAULT_BOLD
+        }
+        val logo = ImageView(context).apply {
+            scaleType = ImageView.ScaleType.FIT_CENTER
+            val inset = context.dp(5)
+            setPadding(inset, inset, inset, inset)
+        }
+        artwork.addView(logoFallback, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+        artwork.addView(logo, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
         val details = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
         val title = context.label("", if (compact) 17f else 19f).apply {
             typeface = Typeface.DEFAULT_BOLD
@@ -122,9 +147,12 @@ class ChannelAdapter(
         details.addView(title, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
         details.addView(subtitle, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
         root.addView(number, LinearLayout.LayoutParams(context.dp(if (compact) 44 else 50), context.dp(if (compact) 44 else 50)).apply { rightMargin = context.dp(16) })
+        root.addView(artwork, LinearLayout.LayoutParams(context.dp(if (compact) 62 else 72), context.dp(if (compact) 44 else 50)).apply {
+            marginEnd = context.dp(14)
+        })
         root.addView(details, LinearLayout.LayoutParams(0, context.dp(if (compact) 50 else 56), 1f))
         root.addView(star, LinearLayout.LayoutParams(context.dp(36), ViewGroup.LayoutParams.MATCH_PARENT))
-        return Holder(root, number, title, subtitle, star)
+        return Holder(root, number, logo, logoFallback, title, subtitle, star)
     }
 
     override fun onBindViewHolder(holder: Holder, position: Int) {
@@ -137,14 +165,33 @@ class ChannelAdapter(
         holder.root.isSelected = channel.id == lastChannelId
         holder.star.text = if (isFavorite) "★" else "☆"
         holder.star.setTextColor(holder.root.context.getColor(if (isFavorite) R.color.accent else R.color.text_secondary))
-        holder.root.contentDescription = "Canal ${holder.number.text}, ${channel.name}. ${currentProgram ?: channel.group}. Mantén OK para ${if (isFavorite) "quitar de" else "añadir a"} favoritos"
+        val longPress = when {
+            opensChannelActions -> "ver opciones"
+            isFavorite -> "quitar de favoritos"
+            else -> "añadir a favoritos"
+        }
+        holder.root.contentDescription = "Canal ${holder.number.text}, ${channel.name}. ${currentProgram ?: channel.group}. Mantén OK para $longPress"
+        ChannelArtworkLoader.bind(channel.logoUrl, holder.logo, holder.logoFallback)
         holder.root.setOnClickListener { onClick(channel) }
         holder.root.setOnLongClickListener { onLongClick(channel); true }
     }
 
+    override fun onViewRecycled(holder: Holder) {
+        ChannelArtworkLoader.bind(null, holder.logo, holder.logoFallback)
+        super.onViewRecycled(holder)
+    }
+
     override fun getItemCount() = items.size
     override fun getItemId(position: Int) = items[position].id.hashCode().toLong()
-    class Holder(val root: View, val number: TextView, val title: TextView, val subtitle: TextView, val star: TextView) : RecyclerView.ViewHolder(root)
+    class Holder(
+        val root: View,
+        val number: TextView,
+        val logo: ImageView,
+        val logoFallback: TextView,
+        val title: TextView,
+        val subtitle: TextView,
+        val star: TextView,
+    ) : RecyclerView.ViewHolder(root)
 }
 
 class ProgramAdapter : RecyclerView.Adapter<ProgramAdapter.Holder>() {

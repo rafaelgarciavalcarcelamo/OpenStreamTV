@@ -13,18 +13,18 @@ Reproductor IPTV de código abierto para Android TV y Amazon Fire TV. Rápido de
 ## Instalación en Android TV y Fire TV
 
 1. Abre la página de [Releases](https://github.com/rafaelgarciavalcarcelamo/OpenStreamTV/releases/latest) desde el televisor o descarga el APK en otro dispositivo y pásalo por USB.
-2. Descarga el archivo `OpenStreamTV-0.14.0-release.apk` de la versión más reciente.
+2. Descarga el archivo `OpenStreamTV-<versión>-release.apk` de la versión más reciente.
 3. Si Android lo solicita, permite la instalación desde la aplicación con la que abriste el APK (navegador o gestor de archivos).
 4. Instala, abre OpenStream TV y elige **Añadir lista**.
 5. Añade una lista M3U, una cuenta Xtream autorizada y, opcionalmente, una guía XMLTV.
 
 Las actualizaciones se avisan automáticamente una vez al día. También puedes buscarlas manualmente desde **Ajustes → Buscar actualización ahora**.
 
-> Si instalaste una APK debug de pruebas anterior a `0.13.0`, desinstálala antes de instalar una release firmada. La desinstalación borra los datos guardados en la aplicación.
+> Si Android indica que la APK de pruebas instalada tiene otra firma, guarda primero los datos de tus fuentes. Desinstalar la app borra sus listas y ajustes locales.
 
 ## Control desde iPhone o Android
 
-OpenStream TV puede alojar un panel web privado dentro de la red doméstica. En la televisión, abre **Móvil**, escanea el QR y el teléfono recordará el dispositivo para las siguientes veces. Desde el panel se pueden añadir, probar, modificar, activar, actualizar y eliminar listas M3U o Xtream sin volver a escribirlas con el mando.
+En la televisión, abre **Mis listas → Gestionar listas desde otro dispositivo** y escanea el QR. El teléfono recordará la televisión. Desde el panel web local puedes añadir, modificar, activar, actualizar, desactivar, reactivar y eliminar listas.
 
 Las credenciales permanecen cifradas en la televisión: la web solo muestra el servidor y un usuario oculto. El acceso requiere el código de seis cifras mostrado en la TV, limita los intentos fallidos y rechaza conexiones que no procedan de la misma red local.
 
@@ -32,29 +32,32 @@ Las credenciales permanecen cifradas en la televisión: la web solo muestra el s
 
 ## Capturas
 
-La pantalla de ajustes está diseñada para que una persona sin experiencia técnica pueda mantener una reproducción estable sin tocar opciones avanzadas.
+Las capturas se hicieron en Android TV con una lista de demostración que solo muestra canales públicos de [RTVE](https://www.rtve.es/play/videos/directo/). Las imágenes ilustran la interfaz de la app.
 
-![Ajustes de OpenStream TV](docs/screenshots/settings.png)
+![Inicio de OpenStream TV con canales públicos de RTVE](docs/screenshots/inicio.png)
 
-Las capturas se actualizan con cada versión visual importante.
+| Canales | Gestionar categorías |
+| --- | --- |
+| ![Catálogo con imágenes de los canales](docs/screenshots/canales.png) | ![Selector de categorías visibles](docs/screenshots/categorias.png) |
+
+![Ajustes de OpenStream TV con interruptor para la guía EPG](docs/screenshots/settings.png)
 
 ## Funciones incluidas
 
 - Portada de estilo cinematográfico para televisor: canal destacado, filas horizontales de canales y categorías, logos y foco claro al usar el mando.
 - Orden inteligente de Inicio: canales fijados, favoritos y más vistos según el uso local del usuario.
 - Pantalla de personalización para añadir, quitar, subir y bajar canales; el orden elegido también se aplica al catálogo y al cambio de canal.
-- Acceso superior a Inicio, Canales, Favoritos, Buscar, Mis listas y Ajustes; «Reproducir» abre el último canal visto.
+- Acceso superior a Inicio, Canales, Favoritos, Buscar y Mis listas. Ajustes y Diagnóstico automático están en el menú lateral.
 - Panel web local para iPhone y Android con QR, vinculación recordada y controles grandes pensados para usuarios sin experiencia técnica.
-- Gestión remota de varias listas: probar antes de guardar, activar, actualizar, modificar credenciales y eliminar sin mostrar secretos existentes.
+- Gestión de varias listas con una sola activa. Puedes desactivar y recuperar una lista desde la TV o el panel móvil.
 - Descubrimiento de otros dispositivos OpenStream TV dentro de la misma red doméstica.
 - Aviso superior discreto cuando Android no detecta una VPN activa; abre los ajustes de VPN y puede desactivarse desde Ajustes.
-- Catálogo de dos paneles optimizado para mando: categorías y canales con el programa actual cuando hay guía.
-- Categorías y canales en dos paneles con foco visible, número de canal, programa actual y una pantalla vacía con instrucciones sencillas.
+- Catálogo de dos paneles con logos, números de canal y programación cuando hay guía. **Canales → Explorar → Gestionar categorías** permite ocultar grupos enteros por lista y recuperarlos después.
 - Guía rápida sobre la imagen con OK o MENÚ, cambio de canal con arriba/abajo y selección por número cuando el mando tiene teclado numérico.
 - Importación M3U/M3U8 por URL o selector de archivo.
 - Acceso Xtream Codes mediante servidor, usuario y contraseña; importa categorías y canales en directo.
 - Credenciales y catálogo Xtream cifrados con una clave no exportable de Android Keystore.
-- Guía XMLTV por URL, también si llega comprimida con gzip.
+- Guía XMLTV por URL, compatible con gzip y con un interruptor de EPG en Ajustes.
 - Búsqueda, grupos y favoritos persistentes (pulsación larga sobre un canal).
 - Historial local de canales reproducidos, reiniciable desde Ajustes y usado para ordenar la portada sin enviar datos fuera del dispositivo.
 - Reproducción en directo con AndroidX Media3/ExoPlayer, HLS y flujos progresivos compatibles.

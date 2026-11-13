@@ -9,8 +9,9 @@ import java.util.UUID
 class PlaylistSourceStore(private val context: Context, private val vault: CredentialVault) {
     private val registryFile = File(context.filesDir, "playlist_sources.bin")
     private val prefs = context.getSharedPreferences("openstream_sources", Context.MODE_PRIVATE)
+    private val preferences = Preferences(context)
 
-    fun all(): List<PlaylistSource> {
+    fun all(): List<PlaylistSource> = synchronized(registryLock) {
         migrateLegacyIfNeeded()
         if (!registryFile.exists()) return emptyList()
         return runCatching {
@@ -21,10 +22,30 @@ class PlaylistSourceStore(private val context: Context, private val vault: Crede
         }.getOrDefault(emptyList())
     }
 
-    fun active(): PlaylistSource? {
+    fun active(): PlaylistSource? = synchronized(registryLock) {
         val sources = all()
         val activeId = prefs.getString(KEY_ACTIVE_ID, null)
-        return sources.firstOrNull { it.id == activeId } ?: sources.firstOrNull()?.also { setActive(it.id) }
+        if (activeId == NO_ACTIVE_SOURCE) return null
+        val hidden = hiddenIds()
+        val enabled = sources.filterNot { it.id in hidden }
+        return enabled.firstOrNull { it.id == activeId } ?: enabled.firstOrNull()
+    }
+
+    fun hiddenIds(): Set<String> = synchronized(registryLock) {
+        prefs.getStringSet(KEY_HIDDEN_IDS, null)?.toSet() ?: preferences.hiddenPlaylistSourceIds
+    }
+
+    fun setEnabled(id: String, enabled: Boolean) = synchronized(registryLock) {
+        val sources = all()
+        require(sources.any { it.id == id }) { "La lista ya no existe" }
+        val hidden = hiddenIds()
+        if (enabled == (id !in hidden)) return@synchronized
+        val editor = prefs.edit()
+        if (!enabled && active()?.id == id) {
+            val next = sources.firstOrNull { it.id != id && it.id !in hidden }
+            editor.putString(KEY_ACTIVE_ID, next?.id ?: NO_ACTIVE_SOURCE)
+        }
+        editor.putStringSet(KEY_HIDDEN_IDS, if (enabled) hidden - id else hidden + id).apply()
     }
 
     fun create(
@@ -46,23 +67,26 @@ class PlaylistSourceStore(private val context: Context, private val vault: Crede
         )
     }
 
-    fun upsert(source: PlaylistSource) {
+    fun upsert(source: PlaylistSource) = synchronized(registryLock) {
         val updated = all().filterNot { it.id == source.id } + source
         save(updated)
     }
 
-    fun setActive(id: String) = prefs.edit().putString(KEY_ACTIVE_ID, id).apply()
+    fun setActive(id: String?) = synchronized(registryLock) {
+        prefs.edit().putString(KEY_ACTIVE_ID, id ?: NO_ACTIVE_SOURCE).apply()
+    }
 
-    fun remove(id: String): PlaylistSource? {
+    fun remove(id: String): PlaylistSource? = synchronized(registryLock) {
         val current = all()
         val removed = current.firstOrNull { it.id == id } ?: return null
+        val wasActive = active()?.id == id
         val remaining = current.filterNot { it.id == id }
         save(remaining)
-        if (prefs.getString(KEY_ACTIVE_ID, null) == id) {
-            prefs.edit().apply {
-                remaining.firstOrNull()?.let { putString(KEY_ACTIVE_ID, it.id) } ?: remove(KEY_ACTIVE_ID)
-            }.apply()
+        val hidden = hiddenIds()
+        if (wasActive) {
+            setActive(remaining.firstOrNull { it.id !in hidden }?.id)
         }
+        if (id in hidden) prefs.edit().putStringSet(KEY_HIDDEN_IDS, hidden - id).apply()
         return removed
     }
 
@@ -132,5 +156,10 @@ class PlaylistSourceStore(private val context: Context, private val vault: Crede
         )
     }.getOrNull()
 
-    companion object { private const val KEY_ACTIVE_ID = "active_source_id" }
+    companion object {
+        private const val KEY_ACTIVE_ID = "active_source_id"
+        private const val KEY_HIDDEN_IDS = "hidden_source_ids"
+        private const val NO_ACTIVE_SOURCE = ""
+        private val registryLock = Any()
+    }
 }

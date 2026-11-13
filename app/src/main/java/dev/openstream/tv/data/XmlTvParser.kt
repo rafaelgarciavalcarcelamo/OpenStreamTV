@@ -8,17 +8,36 @@ import java.util.Locale
 import java.util.TimeZone
 
 object XmlTvParser {
-    fun parse(input: InputStream): List<Program> {
+    fun parse(input: InputStream): List<Program> = parseGuide(input).programs
+
+    fun parseGuide(input: InputStream): GuideData {
         val parser = Xml.newPullParser().apply { setInput(input, null) }
         val result = mutableListOf<Program>()
+        val channelIds = linkedMapOf<String, String>()
         var event = parser.eventType
         while (event != XmlPullParser.END_DOCUMENT) {
-            if (event == XmlPullParser.START_TAG && parser.name == "programme") {
-                parseProgram(parser)?.let(result::add)
+            if (event == XmlPullParser.START_TAG) {
+                when (parser.name) {
+                    "channel" -> parseChannel(parser).forEach { nameAndId -> channelIds[nameAndId.first] = nameAndId.second }
+                    "programme" -> parseProgram(parser)?.let(result::add)
+                }
             }
             event = parser.next()
         }
-        return result
+        return GuideData(result, channelIds)
+    }
+
+    private fun parseChannel(parser: XmlPullParser): List<Pair<String, String>> {
+        val id = parser.getAttributeValue(null, "id") ?: return emptyList()
+        val names = mutableListOf<Pair<String, String>>()
+        var event = parser.next()
+        while (!(event == XmlPullParser.END_TAG && parser.name == "channel")) {
+            if (event == XmlPullParser.START_TAG && parser.name == "display-name") {
+                parser.nextText().trim().takeIf(String::isNotBlank)?.let { names += it to id }
+            }
+            event = parser.next()
+        }
+        return names
     }
 
     private fun parseProgram(parser: XmlPullParser): Program? {
@@ -27,17 +46,21 @@ object XmlTvParser {
         val stop = parseTime(parser.getAttributeValue(null, "stop")) ?: return null
         var title = "Sin información"
         var description: String? = null
+        var iconUrl: String? = null
+        var category: String? = null
         var event = parser.next()
         while (!(event == XmlPullParser.END_TAG && parser.name == "programme")) {
             if (event == XmlPullParser.START_TAG) {
                 when (parser.name) {
                     "title" -> title = parser.nextText().trim()
                     "desc" -> description = parser.nextText().trim()
+                    "icon" -> iconUrl = parser.getAttributeValue(null, "src")?.trim()
+                    "category" -> if (category.isNullOrBlank()) category = parser.nextText().trim()
                 }
             }
             event = parser.next()
         }
-        return Program(channel, title, description, start, stop)
+        return Program(channel, title, description, start, stop, iconUrl, category)
     }
 
     private fun parseTime(raw: String?): Long? {

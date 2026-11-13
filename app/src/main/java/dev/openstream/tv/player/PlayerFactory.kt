@@ -71,6 +71,8 @@ object PlayerFactory {
         return ExoPlayer.Builder(context, renderers)
             .setLoadControl(loadControl)
             .setMediaSourceFactory(mediaSourceFactory)
+            .setReleaseTimeoutMs(1_500L)
+            .setDetachSurfaceTimeoutMs(1_000L)
             .setLivePlaybackSpeedControl(
                 DefaultLivePlaybackSpeedControl.Builder()
                     .setFallbackMinPlaybackSpeed(0.98f)

@@ -37,6 +37,7 @@
         </receiver>
 
         <activity android:name=".ui.SettingsActivity" />
+        <activity android:name=".ui.DiagnosticsActivity" />
         <activity android:name=".ui.PersonalizationActivity" />
         <activity
             android:name=".ui.PlayerActivity"

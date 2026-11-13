@@ -15,11 +15,19 @@ data class Program(
     val description: String?,
     val startMillis: Long,
     val endMillis: Long,
+    val iconUrl: String? = null,
+    val category: String? = null,
+)
+
+data class GuideData(
+    val programs: List<Program>,
+    val channelIdsByDisplayName: Map<String, String>,
 )
 
 data class Playlist(
     val name: String,
     val channels: List<Channel>,
+    val sourceId: String? = null,
 )
 
 enum class PlaylistSourceType { M3U, XTREAM, FILE }

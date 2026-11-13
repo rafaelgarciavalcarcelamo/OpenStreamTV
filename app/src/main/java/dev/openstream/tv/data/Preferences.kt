@@ -53,6 +53,9 @@ class Preferences(context: Context) {
     var epgUrl: String
         get() = prefs.getString("epg_url", "") ?: ""
         set(value) = prefs.edit().putString("epg_url", value).apply()
+    var epgEnabled: Boolean
+        get() = prefs.getBoolean("epg_enabled", true)
+        set(value) = prefs.edit().putBoolean("epg_enabled", value).apply()
     var bufferPreset: BufferPreset
         get() = runCatching { BufferPreset.valueOf(prefs.getString("buffer_preset", BufferPreset.PERSONALIZADO.name)!!) }.getOrDefault(BufferPreset.PERSONALIZADO)
         set(value) = prefs.edit().putString("buffer_preset", value.name).apply()
@@ -122,6 +125,31 @@ class Preferences(context: Context) {
     var favorites: Set<String>
         get() = prefs.getStringSet("favorites", emptySet())?.toSet() ?: emptySet()
         set(value) = prefs.edit().putStringSet("favorites", value).apply()
+    /**
+     * Channels excluded from the effective catalogue. The source playlist is
+     * intentionally left untouched so a channel can be restored later.
+     */
+    var hiddenChannelIds: Set<String>
+        get() = prefs.getStringSet("hidden_channel_ids", emptySet())?.toSet() ?: emptySet()
+        set(value) = prefs.edit().putStringSet("hidden_channel_ids", value).apply()
+
+    fun hiddenGroups(sourceId: String?): Set<String> {
+        if (sourceId == null) return emptySet()
+        return prefs.getStringSet("hidden_groups_$sourceId", emptySet())?.toSet().orEmpty()
+    }
+
+    fun setHiddenGroups(sourceId: String, groups: Set<String>) {
+        prefs.edit().putStringSet("hidden_groups_$sourceId", groups.toSet()).apply()
+    }
+
+    fun visibleChannels(playlist: Playlist?): List<Channel> {
+        val hiddenIds = hiddenChannelIds
+        val hiddenGroups = hiddenGroups(playlist?.sourceId)
+        return playlist?.channels.orEmpty().filterNot { it.id in hiddenIds || it.group in hiddenGroups }
+    }
+    // Read the setting from builds that stored disabled lists here.
+    val hiddenPlaylistSourceIds: Set<String>
+        get() = prefs.getStringSet("hidden_playlist_source_ids", emptySet())?.toSet() ?: emptySet()
     var pinnedChannelOrder: List<String>
         get() = parseStringList(prefs.getString("pinned_channel_order", "[]"))
         set(value) = prefs.edit().putString("pinned_channel_order", JSONArray(value.distinct()).toString()).apply()
@@ -131,6 +159,12 @@ class Preferences(context: Context) {
     var homeChannelCount: Int
         get() = prefs.getInt("home_channel_count", 36).coerceIn(12, 60)
         set(value) = prefs.edit().putInt("home_channel_count", value.coerceIn(12, 60)).apply()
+    var homeVisibleGroups: Set<String>
+        get() = prefs.getStringSet("home_visible_groups", emptySet())?.toSet() ?: emptySet()
+        set(value) = prefs.edit().putStringSet("home_visible_groups", value.toSet()).apply()
+    var homeGroupOrder: List<String>
+        get() = parseStringList(prefs.getString("home_group_order", "[]"))
+        set(value) = prefs.edit().putString("home_group_order", JSONArray(value.distinct()).toString()).apply()
 
     var automaticUpdateChecks: Boolean
         get() = prefs.getBoolean("automatic_update_checks", true)
@@ -187,8 +221,22 @@ class Preferences(context: Context) {
     }
 
     fun applyTvExperienceDefaults() {
-        if (prefs.getBoolean("tv_experience_v2", false)) return
-        prefs.edit().putBoolean("tv_experience_v2", true).apply()
+        if (!prefs.getBoolean("tv_experience_v2", false)) {
+            prefs.edit().putBoolean("tv_experience_v2", true).apply()
+        }
+        if (!prefs.getBoolean("tv_experience_v3", false)) {
+            val editor = prefs.edit().putBoolean("tv_experience_v3", true)
+            if (homeChannelCount > 16) editor.putInt("home_channel_count", 12)
+            editor.apply()
+        }
+        if (!prefs.getBoolean("tv_experience_v4", false)) {
+            prefs.edit()
+                .putBoolean("tv_experience_v4", true)
+                .remove("home_visible_groups")
+                .remove("home_group_order")
+                .putInt("home_channel_count", 12)
+                .apply()
+        }
     }
 
     private fun parseStringList(raw: String?): List<String> = runCatching {

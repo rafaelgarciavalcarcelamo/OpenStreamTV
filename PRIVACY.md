@@ -10,7 +10,7 @@ OpenStream TV no requiere una cuenta y no incorpora analítica, publicidad ni se
 
 ## Conexiones de red
 
-La aplicación se conecta exclusivamente a las direcciones que introduzca la persona usuaria para sus listas, guía o proveedor Xtream. Si están activadas las comprobaciones de actualización, consulta una vez al día el manifiesto público de GitHub. GitHub puede recibir la dirección IP y el identificador técnico de versión usados para esa conexión.
+La aplicación se conecta a las fuentes de listas y de guía, a los servidores de reproducción y a las direcciones de imágenes indicadas por esas fuentes. La portada también puede consultar TheSportsDB para verificar eventos y descargar imágenes, y FotMob para mostrar escudos. Si están activadas las comprobaciones de actualización, consulta una vez al día el manifiesto público de GitHub. Los servicios externos pueden recibir la dirección IP y los datos técnicos habituales de la conexión.
 
 El control móvil abre un servidor web en el puerto local `8765` mientras el proceso de OpenStream TV está en ejecución. Solo acepta dispositivos de la misma red doméstica y exige el código mostrado en la televisión. El navegador recibe los nombres, tipos y servidores abreviados de las listas, pero no las URLs completas, usuarios completos ni contraseñas almacenadas. No interviene ningún servidor en la nube de OpenStream TV.
 

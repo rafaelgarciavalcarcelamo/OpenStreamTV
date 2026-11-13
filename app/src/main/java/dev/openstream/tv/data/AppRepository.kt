@@ -24,10 +24,32 @@ class AppRepository(private val context: Context) {
     }
 
     fun listPlaylistSources(): List<PlaylistSource> = sourceStore.all()
+    fun hiddenPlaylistSourceIds(): Set<String> = sourceStore.hiddenIds()
     fun activePlaylistSource(): PlaylistSource? = sourceStore.active()
-    fun loadSavedPlaylist(): Playlist? = sourceStore.active()?.let(::loadCachedPlaylist)
 
-    fun importPlaylist(name: String, source: String, callback: (Result<Playlist>) -> Unit) = executor.execute {
+    fun loadSavedPlaylist(): Playlist? = activePlaylistSource()?.let(::loadCachedPlaylist)
+
+    fun loadSavedPlaylist(source: PlaylistSource): Playlist? =
+        if (source.id in sourceStore.hiddenIds()) null else loadCachedPlaylist(source)
+
+    fun inferredEpgUrl(): String? {
+        val source = sourceStore.active() ?: return null
+        if (source.type == PlaylistSourceType.FILE || source.endpoint.isBlank()) return null
+        val endpoint = Uri.parse(source.endpoint)
+        val username = source.username.ifBlank { endpoint.getQueryParameter("username").orEmpty() }
+        val password = source.password.ifBlank { endpoint.getQueryParameter("password").orEmpty() }
+        if (endpoint.host.isNullOrBlank() || username.isBlank() || password.isBlank()) return null
+        return endpoint.buildUpon()
+            .path("/xmltv.php")
+            .clearQuery()
+            .fragment(null)
+            .appendQueryParameter("username", username)
+            .appendQueryParameter("password", password)
+            .build()
+            .toString()
+    }
+
+    fun importPlaylist(name: String, source: String, callback: (Result<Playlist>) -> Unit) = playlistExecutor.execute {
         val result = runCatching {
             val definition = sourceStore.create(name, PlaylistSourceType.M3U, endpoint = source)
             refreshSource(definition).also {
@@ -38,7 +60,7 @@ class AppRepository(private val context: Context) {
         callback(result)
     }
 
-    fun importPlaylist(uri: Uri, callback: (Result<Playlist>) -> Unit) = executor.execute {
+    fun importPlaylist(uri: Uri, callback: (Result<Playlist>) -> Unit) = playlistExecutor.execute {
         val result = runCatching {
             val definition = sourceStore.create("Lista importada", PlaylistSourceType.FILE)
             val pending = File(context.filesDir, "${definition.cacheFile}.pending")
@@ -52,12 +74,12 @@ class AppRepository(private val context: Context) {
             pending.delete()
             sourceStore.upsert(definition)
             sourceStore.setActive(definition.id)
-            playlist
+            playlist.copy(sourceId = definition.id)
         }
         callback(result)
     }
 
-    fun importXtream(name: String, server: String, username: String, password: String, callback: (Result<Playlist>) -> Unit) = executor.execute {
+    fun importXtream(name: String, server: String, username: String, password: String, callback: (Result<Playlist>) -> Unit) = playlistExecutor.execute {
         val result = runCatching {
             val definition = sourceStore.create(
                 name = name,
@@ -74,9 +96,9 @@ class AppRepository(private val context: Context) {
         callback(result)
     }
 
-    fun activatePlaylistSource(id: String, callback: (Result<Playlist>) -> Unit) = executor.execute {
+    fun activatePlaylistSource(id: String, callback: (Result<Playlist>) -> Unit) = playlistExecutor.execute {
         val result = runCatching {
-            val definition = sourceStore.all().firstOrNull { it.id == id } ?: error("La lista ya no existe")
+            val definition = enabledSource(id)
             val playlist = loadCachedPlaylist(definition) ?: refreshSource(definition)
             sourceStore.setActive(id)
             playlist
@@ -84,11 +106,15 @@ class AppRepository(private val context: Context) {
         callback(result)
     }
 
-    fun deletePlaylistSource(id: String, callback: (Result<Playlist?>) -> Unit) = executor.execute {
+    fun setPlaylistSourceEnabled(id: String, enabled: Boolean, callback: (Result<Unit>) -> Unit) = playlistExecutor.execute {
+        callback(runCatching { sourceStore.setEnabled(id, enabled) })
+    }
+
+    fun deletePlaylistSource(id: String, callback: (Result<Playlist?>) -> Unit) = playlistExecutor.execute {
         val result = runCatching {
             val removed = sourceStore.remove(id) ?: error("La lista ya no existe")
             File(context.filesDir, removed.cacheFile).delete()
-            sourceStore.active()?.let { loadCachedPlaylist(it) ?: refreshSource(it) }
+            loadSavedPlaylist()
         }
         callback(result)
     }
@@ -100,9 +126,9 @@ class AppRepository(private val context: Context) {
         username: String?,
         password: String?,
         callback: (Result<Playlist>) -> Unit,
-    ) = executor.execute {
+    ) = playlistExecutor.execute {
         val result = runCatching {
-            val current = sourceStore.all().firstOrNull { it.id == id } ?: error("La lista ya no existe")
+            val current = enabledSource(id)
             val updated = current.copy(
                 name = name?.trim()?.takeIf(String::isNotBlank) ?: current.name,
                 endpoint = endpoint?.trim()?.takeIf(String::isNotBlank) ?: current.endpoint,
@@ -120,9 +146,9 @@ class AppRepository(private val context: Context) {
         callback(result)
     }
 
-    fun refreshPlaylistSource(id: String, callback: (Result<Playlist>) -> Unit) = executor.execute {
+    fun refreshPlaylistSource(id: String, callback: (Result<Playlist>) -> Unit) = playlistExecutor.execute {
         callback(runCatching {
-            val source = sourceStore.all().firstOrNull { it.id == id } ?: error("La lista ya no existe")
+            val source = enabledSource(id)
             require(source.type != PlaylistSourceType.FILE && source.endpoint.isNotBlank()) {
                 "Esta lista no tiene una fuente actualizable"
             }
@@ -133,11 +159,22 @@ class AppRepository(private val context: Context) {
     fun refreshActivePlaylist(callback: (Result<Playlist>) -> Unit): Boolean {
         val source = sourceStore.active() ?: return false
         if (source.type == PlaylistSourceType.FILE || source.endpoint.isBlank()) return false
-        executor.execute { callback(runCatching { refreshSource(source) }) }
+        playlistExecutor.execute {
+            callback(runCatching {
+                check(activePlaylistSource()?.id == source.id) { "La lista activa ha cambiado" }
+                refreshSource(enabledSource(source.id))
+            })
+        }
         return true
     }
 
-    private fun refreshSource(source: PlaylistSource): Playlist = when (source.type) {
+    private fun enabledSource(id: String): PlaylistSource {
+        val source = sourceStore.all().firstOrNull { it.id == id } ?: error("La lista ya no existe")
+        require(id !in sourceStore.hiddenIds()) { "Esta lista está desactivada" }
+        return source
+    }
+
+    private fun refreshSource(source: PlaylistSource): Playlist = (when (source.type) {
         PlaylistSourceType.M3U -> {
             val pending = File(context.filesDir, "${source.cacheFile}.download")
             openSource(source.endpoint).use { input ->
@@ -164,7 +201,7 @@ class AppRepository(private val context: Context) {
             }
         }
         PlaylistSourceType.FILE -> loadCachedPlaylist(source) ?: error("No hay copia de la lista importada")
-    }
+    }).copy(sourceId = source.id)
 
     private fun loadCachedPlaylist(source: PlaylistSource): Playlist? {
         val file = File(context.filesDir, source.cacheFile)
@@ -173,7 +210,7 @@ class AppRepository(private val context: Context) {
             val bytes = file.readBytes()
             val text = if (source.cacheEncrypted) vault.decrypt(bytes).toString(Charsets.UTF_8)
             else bytes.toString(Charsets.UTF_8)
-            text.reader().use { M3uParser.parse(it, source.name) }
+            text.reader().use { M3uParser.parse(it, source.name) }.copy(sourceId = source.id)
         }.getOrNull()
     }
 
@@ -184,7 +221,7 @@ class AppRepository(private val context: Context) {
         replaceFile(pending, File(context.filesDir, source.cacheFile))
     }
 
-    fun importEpg(source: String, callback: (Result<List<Program>>) -> Unit) = executor.execute {
+    fun importEpg(source: String, callback: (Result<GuideData>) -> Unit) = executor.execute {
         val result = runCatching {
             val pending = File(context.filesDir, "guide.xml.pending")
             openSource(source).use { original ->
@@ -195,18 +232,20 @@ class AppRepository(private val context: Context) {
                 val decoded: InputStream = if (isGzip) GZIPInputStream(buffered) else buffered
                 decoded.use { input -> FileOutputStream(pending).use { BoundedStreams.copy(input, it, MAX_EPG_BYTES) } }
             }
-            FileInputStream(pending).use(XmlTvParser::parse)
+            FileInputStream(pending).use(XmlTvParser::parseGuide)
                 .also { replaceFile(pending, epgFile) }
         }
         callback(result)
     }
 
-    fun loadSavedEpg(): List<Program> = if (epgFile.exists()) {
-        runCatching { FileInputStream(epgFile).use(XmlTvParser::parse) }.getOrDefault(emptyList())
-    } else emptyList()
+    fun loadSavedGuide(): GuideData = if (epgFile.exists()) {
+        runCatching { FileInputStream(epgFile).use(XmlTvParser::parseGuide) }.getOrDefault(GuideData(emptyList(), emptyMap()))
+    } else GuideData(emptyList(), emptyMap())
 
-    fun loadSavedEpgAsync(callback: (List<Program>) -> Unit) = executor.execute {
-        callback(loadSavedEpg())
+    fun loadSavedEpg(): List<Program> = loadSavedGuide().programs
+
+    fun loadSavedGuideAsync(callback: (GuideData) -> Unit) = executor.execute {
+        callback(loadSavedGuide())
     }
 
     private fun openSource(source: String): InputStream {
@@ -251,6 +290,7 @@ class AppRepository(private val context: Context) {
     }
 
     companion object {
+        private val playlistExecutor = Executors.newSingleThreadExecutor()
         private const val MAX_PLAYLIST_BYTES = 64L * 1024L * 1024L
         private const val MAX_EPG_BYTES = 128L * 1024L * 1024L
     }

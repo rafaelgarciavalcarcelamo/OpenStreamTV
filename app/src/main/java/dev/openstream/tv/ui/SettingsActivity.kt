@@ -70,6 +70,12 @@ class SettingsActivity : ComponentActivity() {
             setTextColor(getColor(R.color.text_primary)); isChecked = preferences.refreshSourcesOnLaunch; isFocusable = true
         }
         root.addView(refreshOnLaunch, rowParams(58))
+        val epgEnabled = Switch(this).apply {
+            text = "Activar guía de programación (EPG)"
+            setTextColor(getColor(R.color.text_primary)); isChecked = preferences.epgEnabled; isFocusable = true
+        }
+        root.addView(epgEnabled, rowParams(58))
+        root.addView(label("Desactívala si quieres ahorrar memoria, datos y tiempo de carga. Los canales seguirán funcionando.", 14f, true), rowParams(42))
         val showVpnWarning = Switch(this).apply {
             text = "Avisar arriba cuando no haya una VPN activa"
             setTextColor(getColor(R.color.text_primary)); isChecked = preferences.showVpnWarning; isFocusable = true
@@ -241,6 +247,7 @@ class SettingsActivity : ComponentActivity() {
                 preferences.startupMode = startupModes[startupMode.selectedItemPosition]
                 preferences.confirmExit = confirmExit.isChecked
                 preferences.refreshSourcesOnLaunch = refreshOnLaunch.isChecked
+                preferences.epgEnabled = epgEnabled.isChecked
                 preferences.showVpnWarning = showVpnWarning.isChecked
                 preferences.automaticUpdateChecks = automaticUpdates.isChecked
                 preferences.smartHomeOrder = smartHomeOrder.isChecked
