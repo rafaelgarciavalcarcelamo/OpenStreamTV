@@ -3,6 +3,7 @@ package dev.openstream.tv.ui
 import android.app.Activity
 import android.app.AlertDialog
 import android.content.BroadcastReceiver
+import android.content.ActivityNotFoundException
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
@@ -251,10 +252,18 @@ class MainActivity : ComponentActivity() {
         homeNav = topNavAction("Inicio") { showHome() }.apply { id = View.generateViewId() }
         channelsNav = topNavAction("Canales") { showCatalog("Todos") }
         favoritesNav = topNavAction("Favoritos") { showCatalog("Favoritos") }
+        val moviesAndSeries = topNavAction("Películas y series") { openStremio() }.apply {
+            contentDescription = "Abrir películas y series en Stremio"
+            setSingleLine(false)
+            maxLines = 2
+            textSize = 14f
+            setPadding(dp(6), 0, dp(6), 0)
+        }
         searchButton = topNavAction("Buscar") { showSearchDialog() }
         val sources = topNavAction("Mis listas") { showSourcesDialog() }
-        for (button in listOf(homeNav, channelsNav, favoritesNav, searchButton, sources)) {
-            topNav.addView(button, LinearLayout.LayoutParams(0, dp(if (compact) 38 else 44), 1f).apply {
+        for (button in listOf(homeNav, channelsNav, favoritesNav, moviesAndSeries, searchButton, sources)) {
+            val weight = if (button === moviesAndSeries) 1.7f else 1f
+            topNav.addView(button, LinearLayout.LayoutParams(0, dp(if (compact) 38 else 44), weight).apply {
                 leftMargin = dp(2)
                 rightMargin = dp(2)
             })
@@ -1197,6 +1206,21 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun updateVpnWarningSoon() = runOnUiThread { refreshVpnWarning() }
+
+    private fun openStremio() {
+        val stremioPackage = "com.stremio.one"
+        val intent = packageManager.getLeanbackLaunchIntentForPackage(stremioPackage)
+            ?: packageManager.getLaunchIntentForPackage(stremioPackage)
+        if (intent == null) {
+            Toast.makeText(this, "Instala Stremio para abrir películas y series", Toast.LENGTH_LONG).show()
+            return
+        }
+        try {
+            startActivity(intent)
+        } catch (_: ActivityNotFoundException) {
+            Toast.makeText(this, "No se pudo abrir Stremio", Toast.LENGTH_LONG).show()
+        }
+    }
 
     private fun openVpnSettings() {
         val actions = buildList {

@@ -1,5 +1,10 @@
 # Historial de cambios
 
+## 0.16.1 — 2026-11-20
+
+- Botón «Películas y series» en el menú superior de Android TV para abrir Stremio con su sesión y configuración guardadas.
+- Mensaje de ayuda si Stremio no está instalado o no se puede abrir.
+
 ## 0.16.0 — 2026-11-13
 
 - APK independiente para teléfonos y tablets Android, con catálogo adaptable, navegación táctil y controles de reproducción en pantalla.
