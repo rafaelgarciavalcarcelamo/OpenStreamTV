@@ -53,7 +53,7 @@ Las capturas se hicieron en Android TV con una lista de demostración que solo m
 - Portada de estilo cinematográfico para televisor: canal destacado, filas horizontales de canales y categorías, logos y foco claro al usar el mando.
 - Orden inteligente de Inicio: canales fijados, favoritos y más vistos según el uso local del usuario.
 - Pantalla de personalización para añadir, quitar, subir y bajar canales; el orden elegido también se aplica al catálogo y al cambio de canal.
-- Acceso superior a Inicio, Canales, Favoritos, Buscar y Mis listas. Ajustes y Diagnóstico automático están en el menú lateral.
+- Acceso superior a Inicio, Canales, Favoritos, Películas y series, Buscar y Mis listas. Películas y series abre Stremio instalado en Android TV con su sesión y configuración guardadas. Ajustes y Diagnóstico automático están en el menú lateral.
 - Panel web local para iPhone y Android con QR, vinculación recordada y controles grandes pensados para usuarios sin experiencia técnica.
 - Gestión de varias listas con una sola activa. Puedes desactivar y recuperar una lista desde la TV o el panel móvil.
 - Descubrimiento de otros dispositivos OpenStream TV dentro de la misma red doméstica.

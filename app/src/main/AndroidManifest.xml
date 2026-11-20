@@ -7,6 +7,7 @@
 
     <queries>
         <package android:name="ch.protonvpn.android" />
+        <package android:name="com.stremio.one" />
         <intent><action android:name="android.settings.VPN_SETTINGS" /></intent>
         <intent><action android:name="android.settings.WIRELESS_SETTINGS" /></intent>
         <intent><action android:name="android.settings.SETTINGS" /></intent>
