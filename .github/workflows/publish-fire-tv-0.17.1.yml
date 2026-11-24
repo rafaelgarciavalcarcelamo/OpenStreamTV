@@ -1,0 +1,19 @@
+name: Publish Fire TV 0.17.1
+on:
+  push:
+    branches: [fire-tv-downloads]
+permissions:
+  contents: write
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Verify and publish APK
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_COMMIT: b6910df2f92e24f2368c6f3d8bd1b8fac9e97641
+        run: |
+          set -eu
+          echo '8214111ca1aa6e43f1ceb76c6825e4785e2da8d1c7a81763ffd0e95f9df3104e  OpenStreamTV-0.17.1-fire-tv.apk' | sha256sum --check -
+          gh release create v0.17.1-fire-tv 'OpenStreamTV-0.17.1-fire-tv.apk' --target "$SOURCE_COMMIT" --prerelease --title 'OpenStreamTV 0.17.1 para Fire TV' --notes 'Edición Fire TV. Incluye Continuar viendo, eliminación individual del progreso, selector de audio y subtítulos, recuperación de reproducción VOD y búsqueda con QR para dictado desde el móvil. APK firmado con el certificado de pruebas de esta edición.'
