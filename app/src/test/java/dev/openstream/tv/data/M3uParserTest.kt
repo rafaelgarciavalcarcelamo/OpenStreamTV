@@ -37,4 +37,23 @@ class M3uParserTest {
 
         assertEquals(1, M3uParser.parse(StringReader(source)).channels.size)
     }
+
+    @Test fun separatesVodAndKeepsEpisodesWithRepeatedTvgId() {
+        val source = """
+            #EXTM3U
+            #EXTINF:-1 group-title="Cine",Canal de cine
+            https://example.test/live/user/pass/1.ts
+            #EXTINF:-1 group-title="Estrenos" tvg-description="Uno, dos",Película, parte 2
+            https://example.test/titulo.MKV?token=123
+            #EXTINF:-1 tvg-id="series" group-title="Series",Episodio uno
+            https://example.test/episode1.mp4
+            #EXTINF:-1 tvg-id="series" group-title="Series",Episodio dos
+            https://example.test/episode2.mp4
+        """.trimIndent()
+        val channels = M3uParser.parse(StringReader(source)).channels
+        assertEquals(listOf(ContentKind.LIVE, ContentKind.MOVIE, ContentKind.SERIES, ContentKind.SERIES), channels.map { it.kind })
+        assertEquals("Película, parte 2", channels[1].name)
+        assertEquals("Uno, dos", channels[1].description)
+        assertNotEquals(channels[2].id, channels[3].id)
+    }
 }

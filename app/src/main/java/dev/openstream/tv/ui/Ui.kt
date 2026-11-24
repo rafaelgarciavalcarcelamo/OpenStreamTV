@@ -3,6 +3,9 @@ package dev.openstream.tv.ui
 import android.app.Activity
 import android.content.Context
 import android.graphics.Typeface
+import android.graphics.Bitmap
+import com.google.zxing.BarcodeFormat
+import com.google.zxing.MultiFormatWriter
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
@@ -14,6 +17,17 @@ import android.widget.TextView
 import dev.openstream.tv.R
 
 fun Context.dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
+
+internal fun qrBitmap(content: String, size: Int): Bitmap {
+    val matrix = MultiFormatWriter().encode(content, BarcodeFormat.QR_CODE, size, size)
+    val pixels = IntArray(size * size)
+    for (y in 0 until size) for (x in 0 until size) {
+        pixels[y * size + x] = if (matrix[x, y]) 0xff05090d.toInt() else 0xffffffff.toInt()
+    }
+    return Bitmap.createBitmap(size, size, Bitmap.Config.RGB_565).apply {
+        setPixels(pixels, 0, size, 0, 0, size, size)
+    }
+}
 
 fun View.applyTouchInsets() {
     ViewCompat.setOnApplyWindowInsetsListener(this) { view, insets ->
@@ -47,19 +61,13 @@ fun Context.action(text: String): Button = Button(this).apply {
     setTextColor(context.getColorStateList(R.color.button_text))
     setPadding(dp(16), 0, dp(16), 0)
     typeface = Typeface.DEFAULT_BOLD
-    tvFocusMotion()
+    stateListAnimator = null
 }
 
-fun View.tvFocusMotion() {
-    setOnFocusChangeListener { view, focused ->
-        view.animate().cancel()
-        view.animate()
-            .scaleX(if (focused) 1.025f else 1f)
-            .scaleY(if (focused) 1.025f else 1f)
-            .setDuration(120L)
-            .start()
-        view.elevation = if (focused) context.dp(8).toFloat() else 0f
-    }
+fun View.tvControlFocus(description: String) {
+    isFocusable = true
+    contentDescription = description
+    foreground = context.getDrawable(R.drawable.tv_control_focus)
 }
 
 fun View.margin(left: Int = 0, top: Int = 0, right: Int = 0, bottom: Int = 0) {

@@ -87,6 +87,7 @@ class PersonalizationActivity : ComponentActivity() {
         selectedPane.addView(selectedHeading)
         selectedAdapter = PersonalizationChannelAdapter { channel -> showOrderActions(channel) }
         selectedPane.addView(RecyclerView(this).apply {
+            itemAnimator = null
             layoutManager = LinearLayoutManager(this@PersonalizationActivity)
             adapter = selectedAdapter
             clipChildren = false
@@ -105,6 +106,7 @@ class PersonalizationActivity : ComponentActivity() {
             Toast.makeText(this, "${channel.name} aparecerá en Inicio", Toast.LENGTH_SHORT).show()
         }
         availablePane.addView(RecyclerView(this).apply {
+            itemAnimator = null
             layoutManager = LinearLayoutManager(this@PersonalizationActivity)
             adapter = availableAdapter
             clipChildren = false
@@ -328,7 +330,6 @@ private class PersonalizationChannelAdapter(private val onClick: (Channel) -> Un
             layoutParams = ViewGroup.MarginLayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, context.dp(64)).apply {
                 setMargins(context.dp(3), context.dp(3), context.dp(3), context.dp(3))
             }
-            tvFocusMotion()
         }
         val number = context.label("", 17f).apply {
             typeface = Typeface.DEFAULT_BOLD

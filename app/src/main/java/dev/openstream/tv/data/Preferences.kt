@@ -145,7 +145,10 @@ class Preferences(context: Context) {
     fun visibleChannels(playlist: Playlist?): List<Channel> {
         val hiddenIds = hiddenChannelIds
         val hiddenGroups = hiddenGroups(playlist?.sourceId)
-        return playlist?.channels.orEmpty().filterNot { it.id in hiddenIds || it.group in hiddenGroups }
+        return playlist?.channels.orEmpty().filterNot {
+            (!dev.openstream.tv.BuildConfig.IS_MOBILE && it.kind != ContentKind.LIVE) ||
+                it.id in hiddenIds || it.group in hiddenGroups
+        }
     }
     // Read the setting from builds that stored disabled lists here.
     val hiddenPlaylistSourceIds: Set<String>
@@ -196,6 +199,20 @@ class Preferences(context: Context) {
     var xtreamUsername: String
         get() = prefs.getString("xtream_username", "") ?: ""
         set(value) = prefs.edit().putString("xtream_username", value).apply()
+
+    fun applyFireTvPerformanceProfile() {
+        prefs.edit()
+            .putString("buffer_preset", BufferPreset.PERSONALIZADO.name)
+            .putInt("custom_min", 12_000)
+            .putInt("custom_max", 30_000)
+            .putInt("custom_play", 1_500)
+            .putInt("custom_rebuffer", 3_000)
+            .putInt("live_offset", 8_000)
+            .putInt("max_video_height", 720)
+            .putBoolean("decoder_fallback", true)
+            .putBoolean("auto_reconnect", true)
+            .apply()
+    }
 
     fun applyStableDefaults(force: Boolean = false): Boolean {
         if (!force && prefs.getBoolean("stable_defaults_v3", false)) return false

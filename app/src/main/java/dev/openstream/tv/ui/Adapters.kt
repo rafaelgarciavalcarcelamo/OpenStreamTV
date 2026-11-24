@@ -20,14 +20,15 @@ import java.util.Locale
 
 class GroupAdapter(
     private val onOpen: (String) -> Unit,
-    private val onHide: (String) -> Unit,
+    private val onHide: ((String) -> Unit)? = null,
+    private val itemLabel: String = "canales",
 ) : RecyclerView.Adapter<GroupAdapter.Holder>() {
-    private var items = emptyList<Pair<String, Int>>()
-    private var selected = "Todos"
+    private var items = emptyList<Pair<String, Int?>>()
+    private var selected: String? = "Todos"
 
     init { setHasStableIds(true) }
 
-    fun submit(newItems: List<Pair<String, Int>>, selectedGroup: String) {
+    fun submit(newItems: List<Pair<String, Int?>>, selectedGroup: String?) {
         items = newItems
         selected = selectedGroup
         notifyDataSetChanged()
@@ -45,7 +46,6 @@ class GroupAdapter(
             layoutParams = ViewGroup.MarginLayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, context.dp(if (compact) 48 else 56)).apply {
                 setMargins(context.dp(3), context.dp(3), context.dp(3), context.dp(3))
             }
-            tvFocusMotion()
         }
         val name = context.label("", if (compact) 16f else 17f).apply {
             maxLines = 1
@@ -60,15 +60,24 @@ class GroupAdapter(
     override fun onBindViewHolder(holder: Holder, position: Int) {
         val (name, count) = items[position]
         holder.name.text = name
-        holder.count.text = count.toString()
+        holder.count.text = count?.toString().orEmpty()
+        holder.count.visibility = if (count == null) View.GONE else View.VISIBLE
         holder.root.isSelected = name == selected
         holder.name.typeface = if (name == selected) Typeface.DEFAULT_BOLD else Typeface.DEFAULT
         holder.name.setTextColor(holder.root.context.getColor(if (name == selected) R.color.accent else R.color.text_primary))
-        val canHide = name != "Todos" && name != "Favoritos"
+        val hide = onHide?.takeIf { name != "Todos" && name != "Favoritos" }
+        val canHide = hide != null
         val hint = if (canHide) ". Mantén OK para ver opciones" else ""
-        holder.root.contentDescription = "$name, $count canales${if (name == selected) ", seleccionada" else ""}$hint"
-        holder.root.setOnClickListener { selected = name; notifyDataSetChanged(); onOpen(name) }
-        holder.root.setOnLongClickListener(if (canHide) View.OnLongClickListener { onHide(name); true } else null)
+        val quantity = count?.let { ", $it $itemLabel" }.orEmpty()
+        holder.root.contentDescription = "$name$quantity${if (name == selected) ", seleccionada" else ""}$hint"
+        holder.root.setOnClickListener {
+            if (selected != null) {
+                selected = name
+                notifyDataSetChanged()
+            }
+            onOpen(name)
+        }
+        holder.root.setOnLongClickListener(hide?.let { View.OnLongClickListener { it(name); true } })
         holder.root.isLongClickable = canHide
     }
 
@@ -111,7 +120,6 @@ class ChannelAdapter(
             layoutParams = ViewGroup.MarginLayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, context.dp(if (compact) 72 else 82)).apply {
                 setMargins(context.dp(3), context.dp(3), context.dp(3), context.dp(3))
             }
-            tvFocusMotion()
         }
         val number = context.label("", if (compact) 16f else 17f).apply {
             typeface = Typeface.DEFAULT_BOLD

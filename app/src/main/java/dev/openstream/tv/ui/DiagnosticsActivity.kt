@@ -50,7 +50,10 @@ class DiagnosticsActivity : ComponentActivity() {
             background = getDrawable(R.drawable.panel_surface)
             gravity = Gravity.TOP
         }
-        root.addView(ScrollView(this).apply { addView(results) }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f).apply {
+        root.addView(ScrollView(this).apply {
+            if (!mobile) tvControlFocus("Resultados del diagnóstico")
+            addView(results)
+        }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f).apply {
             topMargin = dp(12)
             bottomMargin = dp(14)
         })

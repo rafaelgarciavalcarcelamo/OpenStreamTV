@@ -2,6 +2,7 @@ package dev.openstream.tv.data
 
 import android.content.Context
 import android.net.Uri
+import android.system.Os
 import java.io.BufferedInputStream
 import java.io.File
 import java.io.FileInputStream
@@ -26,6 +27,55 @@ class AppRepository(private val context: Context) {
     fun listPlaylistSources(): List<PlaylistSource> = sourceStore.all()
     fun hiddenPlaylistSourceIds(): Set<String> = sourceStore.hiddenIds()
     fun activePlaylistSource(): PlaylistSource? = sourceStore.active()
+
+    fun loadVodCategories(source: PlaylistSource, kind: ContentKind, callback: (Map<String, String>) -> Unit) =
+        executor.execute {
+            callback(runCatching { xtreamVodClient(source)?.loadVodCategories(kind).orEmpty() }.getOrDefault(emptyMap()))
+        }
+
+    fun searchVod(source: PlaylistSource, kind: ContentKind, query: String, remote: Boolean, callback: (Result<List<Channel>>) -> Unit) =
+        executor.execute {
+            callback(runCatching {
+                val search = VodSearch(query)
+                val client = xtreamVodClient(source)
+                if ((remote || source.type == PlaylistSourceType.XTREAM) && client != null) {
+                    client.searchCatalog(kind, search)
+                } else {
+                    val entries = loadSavedPlaylist(source)?.channels.orEmpty().asSequence()
+                        .filter { it.kind == kind && search.matches(it.name) }.take(VodSearch.MAX_RESULTS).toList()
+                    entries.ifEmpty { client?.searchCatalog(kind, search).orEmpty() }
+                }
+            })
+        }
+
+    fun loadVod(source: PlaylistSource, kind: ContentKind, series: Channel?, categoryId: String? = null, callback: (Result<List<Channel>>) -> Unit) =
+        executor.execute {
+            callback(runCatching {
+                if (source.type == PlaylistSourceType.XTREAM || series != null || categoryId != null) {
+                    val client = checkNotNull(xtreamVodClient(source)) { "Fuente Xtream no disponible" }
+                    if (series == null) client.loadCatalog(kind, categoryId) else client.loadEpisodes(series)
+                } else {
+                    val cached = checkNotNull(loadSavedPlaylist(source)) { "No se pudo leer la lista guardada" }
+                    val entries = cached.channels.filter { it.kind == kind }
+                    entries.ifEmpty { xtreamVodClient(source)?.loadCatalog(kind).orEmpty() }
+                }
+            })
+        }
+
+    private fun xtreamVodClient(source: PlaylistSource): XtreamClient? {
+        val prefs = Preferences(context)
+        if (source.type == PlaylistSourceType.XTREAM) {
+            return XtreamClient(source.endpoint, source.username, source.password, prefs.connectTimeoutMs, prefs.readTimeoutMs)
+        }
+        if (source.type != PlaylistSourceType.M3U) return null
+        val url = Uri.parse(source.endpoint)
+        if (url.lastPathSegment != "get.php") return null
+        val username = url.getQueryParameter("username")?.takeIf(String::isNotBlank) ?: return null
+        val password = url.getQueryParameter("password")?.takeIf(String::isNotBlank) ?: return null
+        val server = url.buildUpon().encodedPath(url.encodedPath.orEmpty().substringBeforeLast('/'))
+            .clearQuery().fragment(null).build().toString()
+        return XtreamClient(server, username, password, prefs.connectTimeoutMs, prefs.readTimeoutMs)
+    }
 
     fun loadSavedPlaylist(): Playlist? = activePlaylistSource()?.let(::loadCachedPlaylist)
 
@@ -205,20 +255,31 @@ class AppRepository(private val context: Context) {
 
     private fun loadCachedPlaylist(source: PlaylistSource): Playlist? {
         val file = File(context.filesDir, source.cacheFile)
-        if (!file.exists()) return null
+        val cachedFile = file.takeIf(File::isFile) ?: File(file.parentFile, "${file.name}.backup")
+        if (!cachedFile.isFile) return null
+        val stamp = cachedFile.lastModified()
+        val length = cachedFile.length()
+        playlistSnapshot?.let {
+            if (it.file == cachedFile && it.source == source && it.stamp == stamp && it.length == length) return it.playlist
+        }
         return runCatching {
-            val bytes = file.readBytes()
+            val bytes = cachedFile.readBytes()
             val text = if (source.cacheEncrypted) vault.decrypt(bytes).toString(Charsets.UTF_8)
             else bytes.toString(Charsets.UTF_8)
             text.reader().use { M3uParser.parse(it, source.name) }.copy(sourceId = source.id)
-        }.getOrNull()
+        }.getOrNull()?.also {
+            playlistSnapshot = CachedPlaylist(cachedFile, source, stamp, length, it)
+        }
     }
 
     private fun savePlaylistCache(source: PlaylistSource, text: String) {
         val pending = File(context.filesDir, "${source.cacheFile}.pending")
         val bytes = text.toByteArray(Charsets.UTF_8)
         pending.writeBytes(if (source.cacheEncrypted) vault.encrypt(bytes) else bytes)
-        replaceFile(pending, File(context.filesDir, source.cacheFile))
+        val target = File(context.filesDir, source.cacheFile)
+        Os.rename(pending.absolutePath, target.absolutePath)
+        if (playlistSnapshot?.source?.id == source.id) playlistSnapshot = null
+        File(target.parentFile, "${target.name}.backup").delete()
     }
 
     fun importEpg(source: String, callback: (Result<GuideData>) -> Unit) = executor.execute {
@@ -289,7 +350,12 @@ class AppRepository(private val context: Context) {
         }
     }
 
+    private data class CachedPlaylist(
+        val file: File, val source: PlaylistSource, val stamp: Long, val length: Long, val playlist: Playlist,
+    )
+
     companion object {
+        @Volatile private var playlistSnapshot: CachedPlaylist? = null
         private val playlistExecutor = Executors.newSingleThreadExecutor()
         private const val MAX_PLAYLIST_BYTES = 64L * 1024L * 1024L
         private const val MAX_EPG_BYTES = 128L * 1024L * 1024L

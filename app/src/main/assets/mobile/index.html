@@ -25,6 +25,7 @@
     .tabs{display:grid;grid-template-columns:1fr 1fr;gap:7px;background:#08131d;padding:5px;border-radius:15px;margin:18px 0}.tab{border:0;background:transparent;color:var(--muted);border-radius:11px;height:44px;font-weight:850}.tab.on{background:var(--soft);color:white}.hidden{display:none!important}.toast{position:fixed;z-index:20;left:50%;bottom:100px;transform:translateX(-50%) translateY(20px);background:#f4f7fa;color:#0b1218;padding:13px 18px;border-radius:13px;font-weight:800;opacity:0;pointer-events:none;transition:.2s;width:max-content;max-width:calc(100% - 36px);text-align:center}.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
     .pair{display:grid;min-height:100vh;place-items:center;padding:22px}.pairbox{width:min(480px,100%);text-align:center}.pairbox .logo{font-size:54px}.code{letter-spacing:.18em;text-align:center;font-size:26px!important;font-weight:900}.loading{opacity:.6;pointer-events:none}.devices-list{display:grid;gap:10px}.device-link{text-align:left;width:100%}
     @media(min-width:600px){.actions{grid-template-columns:repeat(4,1fr)}.wrap{padding-left:24px;padding-right:24px}}
+    #app.search-only > :not(header):not(#vodSearchForm){display:none}
   </style>
 </head>
 <body>
@@ -45,6 +46,12 @@
     <div id="deviceCard" class="card device"></div>
     <button class="btn ghost wide small" onclick="discoverDevices()">Buscar otras televisiones en casa</button>
     <div id="otherDevices" class="devices-list"></div>
+    <form id="vodSearchForm" class="card field" onsubmit="sendVodSearch(event)">
+      <label for="vodQuery">Buscar películas o series en la TV</label>
+      <input id="vodQuery" type="search" maxlength="120" required placeholder="Escribe o dicta el título">
+      <p class="hint">Abre «Voz desde el móvil» en la TV y usa el micrófono del teclado del móvil.</p>
+      <button class="btn primary wide" type="submit">Buscar en la TV</button>
+    </form>
     <h2>Listas de canales</h2>
     <div id="playlists"></div>
     <div class="notice">🔒 Las contraseñas permanecen cifradas en la televisión y nunca se muestran en esta página.</div>
@@ -84,12 +91,14 @@
 
   <script>
     const $=id=>document.getElementById(id), state={device:null,playlists:[],key:''};
-    const queryKey=new URLSearchParams(location.search).get('k');
-    if(/^\d{6}$/.test(queryKey||'')){localStorage.setItem('openstreamKey',queryKey);history.replaceState({},'',location.pathname)}
+    const queryKey=new URLSearchParams(location.search).get('k'), searchOnly=location.hash==='#buscar';
+    if(/^\d{6}$/.test(queryKey||'')){localStorage.setItem('openstreamKey',queryKey);history.replaceState({},'',location.pathname+location.hash)}
+    $('app').classList.toggle('search-only',searchOnly);
     state.key=localStorage.getItem('openstreamKey')||'';
     const esc=s=>String(s??'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
     async function api(path,options={}){const headers={'X-OpenStream-Key':state.key,...(options.body?{'Content-Type':'application/json'}:{})};const response=await fetch(path,{...options,headers:{...headers,...options.headers}});let data={};try{data=await response.json()}catch{}if(response.status===401){showPair();throw new Error(data.error||'Código incorrecto')}if(!response.ok)throw new Error(data.error||'No se pudo completar');return data}
     function toast(text){$('toast').textContent=text;$('toast').classList.add('show');setTimeout(()=>$('toast').classList.remove('show'),2600)}
+    async function sendVodSearch(event){event.preventDefault();const query=$('vodQuery').value.trim();if(!query)return;await busy(event.submitter,async()=>{await api('/api/vod/search',{method:'POST',body:JSON.stringify({query})});toast('Búsqueda enviada a la TV')})}
     function showPair(){$('app').classList.add('hidden');$('pairScreen').classList.remove('hidden');setTimeout(()=>$('pairCode').focus(),100)}
     async function pair(){const code=$('pairCode').value.trim();if(!/^\d{6}$/.test(code))return toast('Escribe los 6 números');state.key=code;localStorage.setItem('openstreamKey',code);try{await boot()}catch(e){localStorage.removeItem('openstreamKey');state.key='';toast(e.message);showPair()}}
     async function boot(){state.device=await fetch('/api/device').then(r=>r.json());await loadPlaylists();$('pairScreen').classList.add('hidden');$('app').classList.remove('hidden');renderDevice();setInterval(checkConnection,12000)}

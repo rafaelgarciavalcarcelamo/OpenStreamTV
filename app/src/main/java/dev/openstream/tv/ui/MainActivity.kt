@@ -7,7 +7,6 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
-import android.graphics.Bitmap
 import android.graphics.Typeface
 import android.net.Uri
 import android.net.ConnectivityManager
@@ -58,8 +57,6 @@ import dev.openstream.tv.data.SportsMetadataStatus
 import dev.openstream.tv.local.LocalControlRuntime
 import dev.openstream.tv.local.LocalControlServer
 import dev.openstream.tv.update.AppUpdateChecker
-import com.google.zxing.BarcodeFormat
-import com.google.zxing.MultiFormatWriter
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
@@ -178,13 +175,16 @@ class MainActivity : ComponentActivity() {
     override fun onStart() {
         super.onStart()
         registerPlaylistChangeReceiver()
-        playlist = repository.loadSavedPlaylist()
+        val sourceId = repository.activePlaylistSource()?.id
+        val updated = repository.loadSavedPlaylist() ?: playlist?.takeIf { it.sourceId == sourceId }
+        val playlistChanged = updated !== playlist
+        playlist = updated
         syncGuideAvailability()
         registerVpnMonitor()
         refreshVpnWarning()
         refreshWatchButton()
-        if (::homeLiveAdapter.isInitialized) refreshHome()
-        if (::channelAdapter.isInitialized) refreshChannels()
+        if (playlistChanged) refresh()
+        else if (showingCatalog) refreshChannels() else refreshHome()
         if (guideReleasedForMemory) {
             guideReleasedForMemory = false
             loadGuideIfEnabled()
@@ -221,6 +221,7 @@ class MainActivity : ComponentActivity() {
 
     private fun buildUi() {
         val compact = resources.configuration.screenHeightDp <= 600
+        val narrow = resources.configuration.screenWidthDp < 960
         val screen = FrameLayout(this)
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -241,7 +242,7 @@ class MainActivity : ComponentActivity() {
             letterSpacing = .04f
             setTextColor(getColor(R.color.accent))
         }
-        toolbar.addView(brandName, LinearLayout.LayoutParams(dp(if (compact) 142 else 172), dp(if (compact) 40 else 48)))
+        if (!narrow) toolbar.addView(brandName, LinearLayout.LayoutParams(dp(if (compact) 142 else 172), dp(if (compact) 40 else 48)))
 
         val topNav = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -253,7 +254,14 @@ class MainActivity : ComponentActivity() {
         favoritesNav = topNavAction("Favoritos") { showCatalog("Favoritos") }
         searchButton = topNavAction("Buscar") { showSearchDialog() }
         val sources = topNavAction("Mis listas") { showSourcesDialog() }
-        for (button in listOf(homeNav, channelsNav, favoritesNav, searchButton, sources)) {
+        val movies = topNavAction("Películas") { openVod(dev.openstream.tv.data.ContentKind.MOVIE) }
+        val series = topNavAction("Series") { openVod(dev.openstream.tv.data.ContentKind.SERIES) }
+        for (button in listOf(homeNav, channelsNav, favoritesNav, movies, series, searchButton, sources)) {
+            button.setPadding(dp(3), 0, dp(3), 0)
+            button.setSingleLine()
+            androidx.core.widget.TextViewCompat.setAutoSizeTextTypeUniformWithConfiguration(
+                button, 10, 15, 1, android.util.TypedValue.COMPLEX_UNIT_SP,
+            )
             topNav.addView(button, LinearLayout.LayoutParams(0, dp(if (compact) 38 else 44), 1f).apply {
                 leftMargin = dp(2)
                 rightMargin = dp(2)
@@ -263,7 +271,7 @@ class MainActivity : ComponentActivity() {
             leftMargin = dp(8)
             rightMargin = dp(14)
         })
-        vpnWarning = action("⚠  VPN no detectada").apply {
+        vpnWarning = action(if (narrow) "⚠ VPN" else "⚠  VPN no detectada").apply {
             textSize = if (compact) 12f else 13f
             background = getDrawable(R.drawable.vpn_warning)
             setTextColor(getColorStateList(R.color.vpn_warning_text))
@@ -271,10 +279,10 @@ class MainActivity : ComponentActivity() {
             contentDescription = "VPN no detectada. Pulsa OK para abrir los ajustes de VPN"
             setOnClickListener { openVpnSettings() }
         }
-        toolbar.addView(vpnWarning, LinearLayout.LayoutParams(dp(if (compact) 176 else 208), dp(if (compact) 36 else 40)).apply {
+        toolbar.addView(vpnWarning, LinearLayout.LayoutParams(dp(if (narrow) 80 else if (compact) 176 else 208), dp(if (compact) 36 else 40)).apply {
             rightMargin = dp(10)
         })
-        toolbar.addView(TextClock(this).apply {
+        if (!narrow) toolbar.addView(TextClock(this).apply {
             format24Hour = "HH:mm"
             format12Hour = "h:mm a"
             textSize = 15f
@@ -492,6 +500,7 @@ class MainActivity : ComponentActivity() {
             }
         }, onHide = ::confirmHideGroup)
         val groupsList = RecyclerView(this).apply {
+            itemAnimator = null
             layoutManager = LinearLayoutManager(this@MainActivity)
             adapter = groupAdapter
             clipToPadding = false
@@ -501,6 +510,7 @@ class MainActivity : ComponentActivity() {
 
         channelAdapter = ChannelAdapter(::playChannel, ::showChannelActions, opensChannelActions = true)
         channelList = RecyclerView(this).apply {
+            itemAnimator = null
             layoutManager = LinearLayoutManager(this@MainActivity)
             adapter = channelAdapter
             clipToPadding = false
@@ -547,10 +557,15 @@ class MainActivity : ComponentActivity() {
         setOnClickListener { onClick() }
     }
 
+    private fun openVod(kind: dev.openstream.tv.data.ContentKind) {
+        if (repository.activePlaylistSource() == null) showSourcesDialog()
+        else startActivity(Intent(this, VodActivity::class.java).putExtra(VodActivity.EXTRA_KIND, kind.name))
+    }
+
     private fun buildSideMenu(): FrameLayout {
         val overlay = FrameLayout(this).apply {
             visibility = View.GONE
-            isFocusable = true
+            descendantFocusability = ViewGroup.FOCUS_AFTER_DESCENDANTS
             background = getDrawable(R.drawable.side_menu_scrim)
         }
         val panel = LinearLayout(this).apply {
@@ -587,7 +602,12 @@ class MainActivity : ComponentActivity() {
         for (button in listOf(personalize, apps, diagnostics, settings, close)) {
             panel.addView(button, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(52)).apply { bottomMargin = dp(10) })
         }
-        overlay.addView(panel, FrameLayout.LayoutParams(dp(340), ViewGroup.LayoutParams.MATCH_PARENT, Gravity.START))
+        val scroll = ScrollView(this).apply {
+            isFillViewport = true
+            isFocusable = false
+            addView(panel)
+        }
+        overlay.addView(scroll, FrameLayout.LayoutParams(dp(340), ViewGroup.LayoutParams.MATCH_PARENT, Gravity.START))
         overlay.setOnClickListener { closeSideMenu() }
         panel.setOnClickListener { }
         overlay.tag = personalize
@@ -596,11 +616,20 @@ class MainActivity : ComponentActivity() {
 
     private fun openSideMenu() {
         sideMenuOverlay.visibility = View.VISIBLE
+        ((sideMenuOverlay.parent as ViewGroup).getChildAt(0) as ViewGroup).apply {
+            descendantFocusability = ViewGroup.FOCUS_BLOCK_DESCENDANTS
+            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS
+            findFocus()?.clearFocus()
+        }
         (sideMenuOverlay.tag as? View)?.post { (sideMenuOverlay.tag as? View)?.requestFocus() }
     }
 
     private fun closeSideMenu() {
         sideMenuOverlay.visibility = View.GONE
+        ((sideMenuOverlay.parent as ViewGroup).getChildAt(0) as ViewGroup).apply {
+            descendantFocusability = ViewGroup.FOCUS_BEFORE_DESCENDANTS
+            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_AUTO
+        }
         menuButton.requestFocus()
     }
 
@@ -626,6 +655,7 @@ class MainActivity : ComponentActivity() {
         }, LinearLayout.LayoutParams(dp(140), dp(36)))
         section.addView(heading, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(44)))
         section.addView(RecyclerView(this).apply {
+            itemAnimator = null
             layoutManager = LinearLayoutManager(this@MainActivity, LinearLayoutManager.HORIZONTAL, false)
             this.adapter = adapter
             if (adapter is HomeChannelAdapter) setRecycledViewPool(homeChannelViewPool)
@@ -643,7 +673,7 @@ class MainActivity : ComponentActivity() {
         catalogContent.visibility = View.GONE
         status.visibility = View.GONE
         updateNavSelection()
-        homeScroll.smoothScrollTo(0, 0)
+        homeScroll.scrollTo(0, 0)
         watchButton.requestFocus()
     }
 
@@ -1058,11 +1088,11 @@ class MainActivity : ComponentActivity() {
                     showCatalog(group)
                 }.apply { visibility = View.VISIBLE }
                 homeGroupedSections.addView(section)
-                adapter.submit(groupChannels, favorites, metadata)
+                adapter.submit(groupChannels.take(HOME_CHANNEL_LIMIT), favorites, metadata)
             }
         } else {
             grouped.forEach { (group, groupChannels) ->
-                homeGroupAdapters[group]?.submit(groupChannels, favorites, metadata)
+                homeGroupAdapters[group]?.submit(groupChannels.take(HOME_CHANNEL_LIMIT), favorites, metadata)
             }
         }
     }
@@ -1268,8 +1298,14 @@ class MainActivity : ComponentActivity() {
             return
         }
         if (preferences.rememberLastChannel) preferences.lastChannelId = channel.id
-        startActivity(Intent(this, PlayerActivity::class.java).putExtra(PlayerActivity.EXTRA_CHANNEL_ID, channel.id))
+        startActivity(playerIntent(channel))
     }
+
+    private fun playerIntent(channel: Channel) = Intent(this, PlayerActivity::class.java)
+        .putExtra(PlayerActivity.EXTRA_CHANNEL_ID, channel.id)
+        .putExtra(PlayerActivity.EXTRA_LIVE_URL, channel.url)
+        .putExtra(PlayerActivity.EXTRA_LIVE_TITLE, channel.name)
+        .putExtra(PlayerActivity.EXTRA_SOURCE_ID, playlist?.sourceId)
 
     private fun playChannelWithFallback(channel: Channel, alternatives: List<Channel>) {
         val hidden = preferences.hiddenChannelIds
@@ -1285,8 +1321,7 @@ class MainActivity : ComponentActivity() {
             .take(6)
             .map(Channel::id)
         startActivity(
-            Intent(this, PlayerActivity::class.java)
-                .putExtra(PlayerActivity.EXTRA_CHANNEL_ID, channel.id)
+            playerIntent(channel)
                 .putStringArrayListExtra(PlayerActivity.EXTRA_FALLBACK_CHANNEL_IDS, ArrayList(fallbackIds)),
         )
     }
@@ -1571,17 +1606,6 @@ class MainActivity : ComponentActivity() {
             .show()
     }
 
-    private fun qrBitmap(content: String, size: Int): Bitmap {
-        val matrix = MultiFormatWriter().encode(content, BarcodeFormat.QR_CODE, size, size)
-        val pixels = IntArray(size * size)
-        for (y in 0 until size) for (x in 0 until size) {
-            pixels[y * size + x] = if (matrix[x, y]) 0xff05090d.toInt() else 0xffffffff.toInt()
-        }
-        return Bitmap.createBitmap(size, size, Bitmap.Config.RGB_565).apply {
-            setPixels(pixels, 0, size, 0, 0, size, size)
-        }
-    }
-
     private fun registerPlaylistChangeReceiver() {
         if (playlistChangeReceiverRegistered) return
         val filter = IntentFilter(LocalControlServer.ACTION_PLAYLISTS_CHANGED)
@@ -1625,7 +1649,7 @@ class MainActivity : ComponentActivity() {
         container.addView(password, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(58)))
         AlertDialog.Builder(this)
             .setTitle("Xtream Codes")
-            .setMessage("OpenStream TV importará únicamente los canales en directo de tu cuenta.")
+            .setMessage("OpenStream TV importará los canales en directo. Las películas y series se cargarán al abrir sus secciones.")
             .setView(container)
             .setNegativeButton("Cancelar", null)
             .setPositiveButton("Conectar") { _, _ ->

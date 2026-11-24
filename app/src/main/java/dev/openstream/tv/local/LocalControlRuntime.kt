@@ -6,8 +6,10 @@ import android.net.nsd.NsdServiceInfo
 import android.os.Build
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicReference
 
 object LocalControlRuntime {
+    internal val vodSearchInput = AtomicReference<((String) -> Unit)?>(null)
     @Volatile private var server: LocalControlServer? = null
     @Volatile private var monitorStarted = false
     private var registrationListener: NsdManager.RegistrationListener? = null

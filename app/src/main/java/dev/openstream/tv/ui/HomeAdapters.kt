@@ -61,7 +61,6 @@ class HomeChannelAdapter(
                 topMargin = context.dp(4)
                 bottomMargin = context.dp(4)
             }
-            tvFocusMotion()
         }
         val artwork = FrameLayout(context)
         val monogram = context.label("", 39f).apply {
@@ -124,6 +123,10 @@ class HomeChannelAdapter(
         ChannelArtworkLoader.bind(channel.logoUrl, holder.logo, holder.monogram)
     }
 
+    override fun onViewRecycled(holder: Holder) {
+        ChannelArtworkLoader.bind(null, holder.logo, holder.monogram)
+    }
+
     override fun getItemCount() = channels.size
     override fun getItemId(position: Int) = channels[position].id.hashCode().toLong()
 
@@ -161,7 +164,6 @@ class HomeCategoryAdapter(private val onOpen: (String) -> Unit) : RecyclerView.A
                 topMargin = context.dp(4)
                 bottomMargin = context.dp(4)
             }
-            tvFocusMotion()
         }
         val title = context.label("", 17f).apply {
             typeface = Typeface.DEFAULT_BOLD
@@ -196,9 +198,12 @@ internal object ChannelArtworkLoader {
         .connectTimeout(4, TimeUnit.SECONDS)
         .readTimeout(5, TimeUnit.SECONDS)
         .build()
-    private val executor = Executors.newFixedThreadPool(3)
+    private val executor = java.util.concurrent.ThreadPoolExecutor(
+        2, 2, 0L, TimeUnit.MILLISECONDS, java.util.concurrent.LinkedBlockingQueue(48),
+        java.util.concurrent.ThreadPoolExecutor.DiscardOldestPolicy(),
+    )
     private val priorityExecutor = Executors.newFixedThreadPool(2)
-    private val cache = object : LruCache<String, Bitmap>(6 * 1024) {
+    private val cache = object : LruCache<String, Bitmap>(4 * 1024) {
         override fun sizeOf(key: String, value: Bitmap): Int = value.byteCount / 1024
     }
 
@@ -218,12 +223,13 @@ internal object ChannelArtworkLoader {
         maxBytes: Long,
         previewFallback: Boolean,
     ) {
-        image.tag = url
+        val key = if (url.isNullOrBlank()) null else "$maxBytes:$url"
+        image.tag = key
         image.setImageDrawable(null)
         image.visibility = View.GONE
         fallback.visibility = View.VISIBLE
-        if (url.isNullOrBlank()) return
-        cache.get(url)?.let { show(image, fallback, url, it); return }
+        if (key == null || url.isNullOrBlank()) return
+        cache.get(key)?.let { show(image, fallback, key, it); return }
         worker.execute {
             val candidates = mutableListOf(url)
             if (previewFallback && url.contains("thesportsdb.com") && !url.endsWith("/medium")) {
@@ -237,8 +243,8 @@ internal object ChannelArtworkLoader {
                 if (bitmap != null) break
             }
             bitmap ?: return@execute
-            cache.put(url, bitmap)
-            image.post { show(image, fallback, url, bitmap) }
+            cache.put(key, bitmap)
+            image.post { show(image, fallback, key, bitmap) }
         }
     }
 
@@ -256,7 +262,8 @@ internal object ChannelArtworkLoader {
             val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
             BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
             var sample = 1
-            while (bounds.outWidth / sample > MAX_DECODED_DIMENSION || bounds.outHeight / sample > MAX_DECODED_DIMENSION) {
+            val maxDimension = if (maxBytes == MAX_IMAGE_BYTES) 320 else MAX_DECODED_DIMENSION
+            while (bounds.outWidth / sample > maxDimension || bounds.outHeight / sample > maxDimension) {
                 sample *= 2
             }
             BitmapFactory.decodeByteArray(bytes, 0, bytes.size, BitmapFactory.Options().apply { inSampleSize = sample })

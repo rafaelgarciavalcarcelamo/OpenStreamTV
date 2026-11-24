@@ -54,6 +54,16 @@ class LocalControlServer(
             session.method == Method.GET && session.uri == "/manifest.webmanifest" -> manifest()
             session.method == Method.GET && session.uri == "/api/device" -> deviceResponse()
             session.method == Method.GET && session.uri == "/api/playlists" -> authorized(session) { playlistsResponse() }
+            session.method == Method.POST && session.uri == "/api/vod/search" -> authorized(session) {
+                val query = bodyJson(session).optString("query").trim()
+                require(query.length in 1..dev.openstream.tv.data.VodSearch.MAX_QUERY_LENGTH) { "Introduce un título válido" }
+                val input = LocalControlRuntime.vodSearchInput.getAndSet(null)
+                if (input == null) json(Response.Status.BAD_REQUEST, errorJson("Abre Voz desde el móvil en Películas o Series"))
+                else {
+                    input(query)
+                    json(Response.Status.OK, JSONObject().put("ok", true))
+                }
+            }
             session.method == Method.POST && session.uri == "/api/playlists/m3u" -> authorized(session) {
                 val body = bodyJson(session)
                 val name = body.optString("name").trim().ifBlank { "Mi lista" }

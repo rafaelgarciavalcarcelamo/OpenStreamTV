@@ -136,11 +136,13 @@ class SettingsActivity : ComponentActivity() {
         }
         root.addView(settingRow("Perfil", spinner))
 
-        val minControl = seekSetting("Búfer mínimo", 5, 90, preferences.customMinMs / 1000, "s")
-        val maxControl = seekSetting("Búfer máximo", 10, 180, preferences.customMaxMs / 1000, "s")
-        val playControl = seekSetting("Inicio de reproducción", 1, 10, (preferences.customPlayMs / 1000).coerceAtLeast(1), "s")
-        val rebufferControl = seekSetting("Reanudar tras corte", 1, 15, (preferences.customRebufferMs / 1000).coerceAtLeast(1), "s")
-        val liveControl = seekSetting("Retraso de directo", 0, 30, preferences.liveOffsetMs / 1000, "s")
+        val minControl = seekSetting("Búfer mínimo", if (mobile) 5 else 3, if (mobile) 90 else 12, preferences.customMinMs / 1000, "s")
+        val maxControl = seekSetting("Búfer máximo", 10, if (mobile) 180 else 30, preferences.customMaxMs / 1000, "s")
+        val startMs = if (mobile) preferences.customPlayMs else preferences.customPlayMs.coerceIn(500, 1_500)
+        val playControl = if (mobile) seekSetting("Inicio de reproducción", 1, 10, startMs / 1000, "s")
+            else seekSetting("Inicio de reproducción", 500, 1_500, startMs, "ms")
+        val rebufferControl = seekSetting("Reanudar tras corte", 1, if (mobile) 15 else 3, preferences.customRebufferMs / 1000, "s")
+        val liveControl = seekSetting("Retraso de directo", if (mobile) 0 else 3, if (mobile) 30 else 8, preferences.liveOffsetMs / 1000, "s")
         root.addView(minControl.container)
         root.addView(maxControl.container)
         root.addView(playControl.container)
@@ -265,7 +267,7 @@ class SettingsActivity : ComponentActivity() {
                 preferences.homeChannelCount = homeCountValues[homeCount.selectedItemPosition]
                 preferences.customMinMs = minSeconds * 1000
                 preferences.customMaxMs = maxSeconds * 1000
-                preferences.customPlayMs = playControl.value() * 1000
+                preferences.customPlayMs = if (mobile) playControl.value() * 1000 else playControl.value()
                 preferences.customRebufferMs = rebufferControl.value() * 1000
                 preferences.liveOffsetMs = liveControl.value() * 1000
                 preferences.userAgent = userAgent.text.toString().trim().ifBlank { "OpenStreamTV/0.8" }
@@ -289,14 +291,21 @@ class SettingsActivity : ComponentActivity() {
             }
         }
         root.addView(save, LinearLayout.LayoutParams(dp(250), dp(54)).apply { gravity = Gravity.END; topMargin = dp(20) })
-        val restoreStableDefaults = action("Aplicar ajustes recomendados de máxima estabilidad").apply {
+        val restoreStableDefaults = action(if (mobile) "Aplicar ajustes recomendados de máxima estabilidad" else "Activar perfil de rendimiento para Fire TV").apply {
             setOnClickListener {
-                preferences.applyStableDefaults(force = true)
-                Toast.makeText(this@SettingsActivity, "Perfil estable aplicado: búfer de 60–180 s, retraso de 30 s y reconexión continua", Toast.LENGTH_LONG).show()
-                recreate()
+                if (mobile) {
+                    preferences.applyStableDefaults(force = true)
+                    Toast.makeText(this@SettingsActivity, "Perfil estable aplicado con reconexión automática", Toast.LENGTH_LONG).show()
+                    recreate()
+                } else {
+                    preferences.applyFireTvPerformanceProfile()
+                    Toast.makeText(this@SettingsActivity, "Perfil Fire TV activado", Toast.LENGTH_SHORT).show()
+                    finish()
+                }
             }
         }
-        root.addView(restoreStableDefaults, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(54)).apply { topMargin = dp(12) })
+        root.addView(restoreStableDefaults, if (mobile) root.childCount else firstAdvancedIndex,
+            LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(54)).apply { topMargin = dp(12) })
         scroll.addView(root, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
         setContentView(scroll)
     }
@@ -311,6 +320,7 @@ class SettingsActivity : ComponentActivity() {
         val seek = SeekBar(this).apply {
             this.max = max - min
             progress = initial.coerceIn(min, max) - min
+            if (!BuildConfig.IS_MOBILE) tvControlFocus(name)
             isFocusable = true
         }
         fun update() { value.text = "$name: ${min + seek.progress} $suffix" }
@@ -326,6 +336,7 @@ class SettingsActivity : ComponentActivity() {
     }
 
     private fun settingRow(title: String, control: android.view.View): LinearLayout = LinearLayout(this).apply {
+        if (!BuildConfig.IS_MOBILE) control.tvControlFocus(title)
         val narrow = BuildConfig.IS_MOBILE && resources.configuration.screenWidthDp < 600
         orientation = if (narrow) LinearLayout.VERTICAL else LinearLayout.HORIZONTAL
         gravity = Gravity.CENTER_VERTICAL

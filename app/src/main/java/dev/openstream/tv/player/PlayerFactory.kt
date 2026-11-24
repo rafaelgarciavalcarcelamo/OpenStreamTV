@@ -15,11 +15,16 @@ import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import dev.openstream.tv.data.BufferPreset
 import dev.openstream.tv.data.DecoderPreference
 import dev.openstream.tv.data.Preferences
+import dev.openstream.tv.BuildConfig
 import okhttp3.OkHttpClient
 import java.util.concurrent.TimeUnit
 
 @androidx.annotation.OptIn(markerClass = [UnstableApi::class])
 object PlayerFactory {
+    fun liveOffsetMs(preferences: Preferences): Long =
+        if (BuildConfig.IS_MOBILE) preferences.liveOffsetMs.toLong().coerceAtLeast(3_000L)
+        else preferences.liveOffsetMs.toLong().coerceIn(3_000L, 8_000L)
+
     fun create(
         context: Context,
         preferences: Preferences,
@@ -31,10 +36,18 @@ object PlayerFactory {
         val maxMs = if (preset == BufferPreset.PERSONALIZADO) preferences.customMaxMs else preset.maxMs
         val playMs = if (preset == BufferPreset.PERSONALIZADO) preferences.customPlayMs else preset.playMs
         val rebufferMs = if (preset == BufferPreset.PERSONALIZADO) preferences.customRebufferMs else preset.rebufferMs
-        val loadControl = DefaultLoadControl.Builder()
-            .setBufferDurationsMs(minMs, maxMs.coerceAtLeast(minMs), playMs, rebufferMs)
-            .setPrioritizeTimeOverSizeThresholds(true)
-            .build()
+        val loadControl = DefaultLoadControl.Builder().apply {
+            if (BuildConfig.IS_MOBILE) {
+                setBufferDurationsMs(minMs, maxMs.coerceAtLeast(minMs), playMs, rebufferMs)
+                setPrioritizeTimeOverSizeThresholds(true)
+            } else {
+                val minimum = minMs.coerceIn(3_000, 12_000)
+                setBufferDurationsMs(minimum, maxMs.coerceIn(minimum, 30_000),
+                    playMs.coerceIn(500, 1_500), rebufferMs.coerceIn(1_000, 3_000))
+                setTargetBufferBytes(24 * 1024 * 1024)
+                setPrioritizeTimeOverSizeThresholds(false)
+            }
+        }.build()
         val codecSelector = MediaCodecSelector { mimeType, requiresSecureDecoder, requiresTunnelingDecoder ->
             val available = MediaCodecSelector.DEFAULT.getDecoderInfos(mimeType, requiresSecureDecoder, requiresTunnelingDecoder)
             val preference = when {
@@ -67,7 +80,7 @@ object PlayerFactory {
         val mediaSourceFactory = DefaultMediaSourceFactory(context)
             .setDataSourceFactory(dataSource)
             .setLoadErrorHandlingPolicy(StableLoadErrorPolicy())
-            .setLiveTargetOffsetMs(preferences.liveOffsetMs.toLong())
+            .setLiveTargetOffsetMs(liveOffsetMs(preferences))
         return ExoPlayer.Builder(context, renderers)
             .setLoadControl(loadControl)
             .setMediaSourceFactory(mediaSourceFactory)

@@ -142,7 +142,7 @@ class PlayerActivity : ComponentActivity() {
                     if (!tryNextFallback("Canal sin señal · probando alternativa…")) {
                         scheduleRecovery("El flujo tarda demasiado · reiniciando…", immediate = true)
                     }
-                } else if (current.playbackState == Player.STATE_ENDED && recoveryRunnable == null) {
+                } else if (!isVod && current.playbackState == Player.STATE_ENDED && recoveryRunnable == null) {
                     if (!tryNextFallback("El directo terminó · probando alternativa…")) {
                         scheduleRecovery("El directo terminó · intentando volver…")
                     }
@@ -171,9 +171,23 @@ class PlayerActivity : ComponentActivity() {
         stabilityStore = ChannelStabilityStore(this)
         repository = AppRepository(this)
         val savedSource = repository.activePlaylistSource()
-        playbackSourceId = savedSource?.id
-        val savedChannels = preferences.visibleChannels(savedSource?.let(repository::loadSavedPlaylist))
-        channels = HomeChannelRanker.rank(
+        playbackSourceId = intent.getStringExtra(EXTRA_SOURCE_ID) ?: savedSource?.id
+        val vodUrl = intent.getStringExtra(EXTRA_VOD_URL)
+        val channelId = savedInstanceState?.getString(EXTRA_CHANNEL_ID) ?: intent.getStringExtra(EXTRA_CHANNEL_ID)
+        val selectedUrl = intent.getStringExtra(EXTRA_LIVE_URL)
+        val cachedChannels = if (vodUrl == null && savedSource?.id == playbackSourceId)
+            preferences.visibleChannels(savedSource?.let(repository::loadSavedPlaylist)) else emptyList()
+        val savedChannels = if (selectedUrl != null && channelId != null &&
+            channelId == intent.getStringExtra(EXTRA_CHANNEL_ID) && cachedChannels.none { it.url == selectedUrl }) {
+            listOf(Channel(channelId, intent.getStringExtra(EXTRA_LIVE_TITLE).orEmpty(), selectedUrl)) +
+                cachedChannels.filterNot { it.id == channelId }
+        } else cachedChannels
+        channels = if (vodUrl != null) listOf(Channel(
+            id = requireNotNull(channelId),
+            name = intent.getStringExtra(EXTRA_VOD_TITLE).orEmpty(),
+            url = vodUrl,
+            kind = dev.openstream.tv.data.ContentKind.MOVIE,
+        )) else HomeChannelRanker.rank(
             channels = savedChannels,
             pinnedIds = preferences.pinnedChannelOrder,
             favoriteIds = emptySet(),
@@ -181,16 +195,21 @@ class PlayerActivity : ComponentActivity() {
             limit = savedChannels.size.coerceAtLeast(1),
             smart = false,
         )
-        val channelId = savedInstanceState?.getString(EXTRA_CHANNEL_ID) ?: intent.getStringExtra(EXTRA_CHANNEL_ID)
         intent.getStringArrayListExtra(EXTRA_FALLBACK_CHANNEL_IDS)
             .orEmpty()
             .filterNot { it == channelId }
             .forEach(fallbackChannelIds::addLast)
-        index = channels.indexOfFirst { it.id == channelId }.coerceAtLeast(0)
+        val selectedIndex = if (selectedUrl != null && channelId == intent.getStringExtra(EXTRA_CHANNEL_ID))
+            channels.indexOfFirst { it.url == selectedUrl } else -1
+        index = selectedIndex.takeIf { it >= 0 } ?: channels.indexOfFirst { it.id == channelId }.coerceAtLeast(0)
         buildUi()
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
-                if (guideOverlay.visibility == View.VISIBLE) hideGuide() else finish()
+                when {
+                    guideOverlay.visibility == View.VISIBLE -> hideGuide()
+                    !BuildConfig.IS_MOBILE && touchControls?.visibility == View.VISIBLE -> hideTvControls()
+                    else -> finish()
+                }
             }
         })
     }
@@ -199,6 +218,8 @@ class PlayerActivity : ComponentActivity() {
         outState.putString(EXTRA_CHANNEL_ID, channels.getOrNull(index)?.id)
         super.onSaveInstanceState(outState)
     }
+
+    private val isVod get() = intent.hasExtra(EXTRA_VOD_URL)
 
     private fun buildUi() {
         val mobile = BuildConfig.IS_MOBILE
@@ -245,7 +266,6 @@ class PlayerActivity : ComponentActivity() {
             orientation = LinearLayout.VERTICAL
             background = getDrawable(R.drawable.tv_background)
             setPadding(dp(20), dp(22), dp(20), dp(20))
-            elevation = dp(20).toFloat()
             visibility = View.GONE
         }
         val guideHeader = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
@@ -269,6 +289,7 @@ class PlayerActivity : ComponentActivity() {
             onLongClick = { channel -> toggleGuideFavorite(channel) },
         )
         guideList = RecyclerView(this).apply {
+            itemAnimator = null
             layoutManager = LinearLayoutManager(this@PlayerActivity)
             adapter = guideAdapter
         }
@@ -276,14 +297,14 @@ class PlayerActivity : ComponentActivity() {
         guideEmpty = label("Aún no hay favoritos. Mantén pulsado un canal para añadirlo.", 16f, secondary = true).apply { visibility = View.GONE }
         guideOverlay.addView(guideEmpty, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(58)))
         if (!mobile) guideOverlay.addView(label("OK: ver canal    Mantén OK: favorito", 14f, secondary = true), LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(34)))
-        if (mobile) addTouchControls(root)
+        addPlaybackControls(root)
         val guideWidth = if (mobile && resources.configuration.screenWidthDp < 600) ViewGroup.LayoutParams.MATCH_PARENT else dp(530)
         root.addView(guideOverlay, FrameLayout.LayoutParams(guideWidth, ViewGroup.LayoutParams.MATCH_PARENT, Gravity.START))
         setContentView(root)
         playerView.requestFocus()
     }
 
-    private fun addTouchControls(root: FrameLayout) {
+    private fun addPlaybackControls(root: FrameLayout) {
         val controls = LinearLayout(this).apply {
             gravity = Gravity.CENTER
             setPadding(dp(8), dp(4), dp(8), dp(4))
@@ -297,18 +318,53 @@ class PlayerActivity : ComponentActivity() {
                 controls.addView(this, LinearLayout.LayoutParams(0, dp(48), weight))
             }
         control("‹", "Volver") { finish() }
-        control("−", "Canal anterior") { play(index - 1) }
-        playPause = control("▶", "Reproducir") {
-            player?.let { it.playWhenReady = !it.playWhenReady }
+        if (isVod) control("−10 s", "Retroceder 10 segundos") {
+            player?.let { it.seekTo((it.currentPosition - 10_000).coerceAtLeast(0)) }
         }
-        control("+", "Canal siguiente") { play(index + 1) }
-        control("Canales", "Abrir selector de canales", 1.6f) { showGuide() }
+        else control("−", "Canal anterior") { play(index - 1) }
+        playPause = control("▶", "Reproducir") {
+            togglePlayback()
+        }
+        if (isVod) control("+10 s", "Avanzar 10 segundos") {
+            player?.let { it.seekTo(it.currentPosition + 10_000) }
+        }
+        else {
+            control("+", "Canal siguiente") { play(index + 1) }
+            control("Canales", "Abrir selector de canales", 1.6f) { showGuide() }
+        }
         control("ⓘ", "Diagnóstico de reproducción") { toggleDiagnostics() }
+        if (!BuildConfig.IS_MOBILE) {
+            control("Ajustes", "Ajustes del reproductor", 1.4f) {
+                startActivity(Intent(this, SettingsActivity::class.java))
+            }
+            controls.visibility = View.GONE
+        }
         touchControls = controls
         root.addView(controls, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM))
-        playerView.setOnClickListener {
+        if (BuildConfig.IS_MOBILE) playerView.setOnClickListener {
             controls.visibility = if (controls.visibility == View.VISIBLE) View.GONE else View.VISIBLE
             if (controls.visibility == View.VISIBLE) showBanner(autoHide = true)
+        }
+    }
+
+    private fun showTvControls() {
+        touchControls?.visibility = View.VISIBLE
+        playerView.isFocusable = false
+        playPause?.requestFocus()
+    }
+
+    private fun hideTvControls() {
+        touchControls?.visibility = View.GONE
+        playerView.isFocusable = true
+        playerView.requestFocus()
+    }
+
+    private fun togglePlayback() {
+        player?.let {
+            if (isVod && it.playbackState == Player.STATE_ENDED) {
+                it.seekTo(0)
+                it.play()
+            } else it.playWhenReady = !it.playWhenReady
         }
     }
 
@@ -321,10 +377,19 @@ class PlayerActivity : ComponentActivity() {
             finish()
             return
         }
+        if (channels.isEmpty()) {
+            hint.text = "El canal ya no está disponible en la lista."
+            showBanner()
+            return
+        }
         registerNetworkMonitor()
         player = PlayerFactory.create(this, preferences, { currentDecoderOverride }, { currentAudioDecoderOverride }).also {
             it.addAnalyticsListener(diagnostics)
             it.addListener(object : Player.Listener {
+                override fun onRenderedFirstFrame() {
+                    if (BuildConfig.DEBUG) android.util.Log.d("OpenStreamPlayback", "Primer fotograma")
+                }
+
                 override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
                     playPause?.apply {
                         text = if (playWhenReady) "Ⅱ" else "▶"
@@ -367,12 +432,16 @@ class PlayerActivity : ComponentActivity() {
                 }
                 override fun onPlaybackStateChanged(playbackState: Int) {
                     if (playbackState == Player.STATE_READY) {
-                        if (!hasBeenReady) channels.getOrNull(index)?.let { preferences.recordChannelWatched(it.id) }
+                        if (!isVod && !hasBeenReady) channels.getOrNull(index)?.let { preferences.recordChannelWatched(it.id) }
                         bufferingSinceMs = 0
                         cancelRecovery()
                         scheduleStableMark()
                         hasBeenReady = true
-                        hint.text = if (BuildConfig.IS_MOBILE) "En directo" else "OK: canales    ↑↓: cambiar    Atrás: salir"
+                        hint.text = when {
+                            isVod -> "OK: controles de reproducción"
+                            BuildConfig.IS_MOBILE -> "En directo"
+                            else -> "OK: canales    →: controles    ↑↓: cambiar"
+                        }
                         showBanner(autoHide = true)
                     } else if (playbackState == Player.STATE_BUFFERING) {
                         stableRunnable?.let(retryHandler::removeCallbacks)
@@ -381,10 +450,13 @@ class PlayerActivity : ComponentActivity() {
                             bufferingSinceMs = SystemClock.elapsedRealtime()
                             if (hasBeenReady) adaptAfterRebuffer()
                         }
-                        hint.text = "Cargando canal…"
+                        hint.text = if (isVod) "Cargando vídeo…" else "Cargando canal…"
                         showBanner()
                     } else if (playbackState == Player.STATE_ENDED) {
-                        if (!tryNextFallback("El directo terminó · probando alternativa…")) {
+                        if (isVod) {
+                            hint.text = "Reproducción finalizada"
+                            showBanner(autoHide = true)
+                        } else if (!tryNextFallback("El directo terminó · probando alternativa…")) {
                             scheduleRecovery("El directo terminó · intentando volver…")
                         }
                     }
@@ -392,7 +464,7 @@ class PlayerActivity : ComponentActivity() {
             })
             playerView.player = it
         }
-        if (channels.isNotEmpty()) play(index)
+        play(index)
         retryHandler.postDelayed(healthWatchdog, WATCHDOG_INTERVAL_MS)
     }
 
@@ -405,7 +477,7 @@ class PlayerActivity : ComponentActivity() {
         index = (newIndex + channels.size) % channels.size
         val channel = channels[index]
         fallbackChannelIds.remove(channel.id)
-        if (preferences.rememberLastChannel) preferences.lastChannelId = channel.id
+        if (!isVod && preferences.rememberLastChannel) preferences.lastChannelId = channel.id
         val profile = stabilityStore.get(channel.id)
         currentDecoderOverride = if (profile.forceSoftwareVideo) DecoderPreference.SOFTWARE else null
         currentAudioDecoderOverride = if (profile.forceSoftwareAudio) DecoderPreference.SOFTWARE else null
@@ -423,12 +495,12 @@ class PlayerActivity : ComponentActivity() {
         numberBuffer = ""
         numberCommitRunnable?.let(retryHandler::removeCallbacks)
         diagnostics.resetForChannel()
-        title.text = "${index + 1}  ${channel.name}"
-        hint.text = "Cargando canal…"
+        title.text = if (isVod) channel.name else "${index + 1}  ${channel.name}"
+        hint.text = if (isVod) "Cargando vídeo…" else "Cargando canal…"
         showBanner()
-        val targetOffset = preferences.liveOffsetMs.toLong().coerceAtLeast(3_000L)
+        val targetOffset = PlayerFactory.liveOffsetMs(preferences)
         val builder = MediaItem.Builder().setUri(channel.url).setMediaId(channel.id)
-            .setLiveConfiguration(
+        if (!isVod) builder.setLiveConfiguration(
                 MediaItem.LiveConfiguration.Builder()
                     .setTargetOffsetMs(targetOffset)
                     .setMinOffsetMs((targetOffset - 5_000L).coerceAtLeast(1_000L))
@@ -448,6 +520,19 @@ class PlayerActivity : ComponentActivity() {
     }
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
+        if (!BuildConfig.IS_MOBILE && guideOverlay.visibility != View.VISIBLE) {
+            if (keyCode == KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE) {
+                if (event?.repeatCount == 0) togglePlayback()
+                return true
+            }
+            if (touchControls?.visibility == View.VISIBLE) return super.onKeyDown(keyCode, event)
+            if (keyCode == KeyEvent.KEYCODE_DPAD_RIGHT ||
+                (isVod && keyCode in listOf(KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_MENU))) {
+                if (event?.repeatCount == 0) showTvControls()
+                return true
+            }
+        }
+        if (isVod) return super.onKeyDown(keyCode, event)
         when (keyCode) {
             KeyEvent.KEYCODE_CHANNEL_UP -> { play(index + 1); return true }
             KeyEvent.KEYCODE_CHANNEL_DOWN -> { play(index - 1); return true }
@@ -565,6 +650,7 @@ class PlayerActivity : ComponentActivity() {
 
     private fun showGuide() {
         touchControls?.visibility = View.GONE
+        playerView.isFocusable = false
         guideOverlay.visibility = View.VISIBLE
         banner.visibility = View.GONE
         refreshGuide()
@@ -577,9 +663,12 @@ class PlayerActivity : ComponentActivity() {
     }
 
     private fun hideGuide() {
-        touchControls?.visibility = View.VISIBLE
         guideOverlay.visibility = View.GONE
-        playerView.requestFocus()
+        if (BuildConfig.IS_MOBILE) {
+            touchControls?.visibility = View.VISIBLE
+            playerView.isFocusable = true
+            playerView.requestFocus()
+        } else hideTvControls()
         showBanner(autoHide = true)
     }
 
@@ -702,6 +791,11 @@ class PlayerActivity : ComponentActivity() {
 
     companion object {
         const val EXTRA_CHANNEL_ID = "channel_id"
+        const val EXTRA_LIVE_URL = "live_url"
+        const val EXTRA_LIVE_TITLE = "live_title"
+        const val EXTRA_SOURCE_ID = "source_id"
+        const val EXTRA_VOD_URL = "vod_url"
+        const val EXTRA_VOD_TITLE = "vod_title"
         const val EXTRA_FALLBACK_CHANNEL_IDS = "fallback_channel_ids"
         private const val WATCHDOG_INTERVAL_MS = 5_000L
         private const val MAX_BUFFERING_MS = 40_000L

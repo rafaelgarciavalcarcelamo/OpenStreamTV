@@ -7,7 +7,11 @@ data class Channel(
     val group: String = "Sin categoría",
     val logoUrl: String? = null,
     val tvgId: String? = null,
+    val kind: ContentKind = ContentKind.LIVE,
+    val description: String? = null,
 )
+
+enum class ContentKind { LIVE, MOVIE, SERIES }
 
 data class Program(
     val channelId: String,
