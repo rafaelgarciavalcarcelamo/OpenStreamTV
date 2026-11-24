@@ -18,6 +18,13 @@ import dev.openstream.tv.R
 
 fun Context.dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
 
+internal fun vodTime(positionMs: Long): String {
+    val seconds = positionMs / 1000
+    val minutes = seconds / 60
+    return if (minutes >= 60) "${minutes / 60}:${(minutes % 60).toString().padStart(2, '0')}:${(seconds % 60).toString().padStart(2, '0')}"
+    else "$minutes:${(seconds % 60).toString().padStart(2, '0')}"
+}
+
 internal fun qrBitmap(content: String, size: Int): Bitmap {
     val matrix = MultiFormatWriter().encode(content, BarcodeFormat.QR_CODE, size, size)
     val pixels = IntArray(size * size)

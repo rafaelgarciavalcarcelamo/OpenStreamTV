@@ -101,6 +101,9 @@ class MainActivity : ComponentActivity() {
     private lateinit var catalogContent: LinearLayout
     private lateinit var homeEmptyMessage: TextView
     private lateinit var homeLiveSection: LinearLayout
+    private lateinit var continueSection: LinearLayout
+    private val vodHistory by lazy { dev.openstream.tv.data.VodHistory(this) }
+    private val continueAdapter = ContinueWatchingAdapter(::openContinueWatching)
     private lateinit var homeGroupedSections: LinearLayout
     private lateinit var homeLiveAdapter: HomeChannelAdapter
     private lateinit var sideMenuOverlay: FrameLayout
@@ -439,6 +442,10 @@ class MainActivity : ComponentActivity() {
             gravity = Gravity.CENTER
         }
         homeBody.addView(homeEmptyMessage, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(86)))
+        continueSection = homeSection("Continuar viendo", continueAdapter, "Quitar título", rowHeight = 88) {
+            showRemoveContinueWatching()
+        }
+        homeBody.addView(continueSection)
         homeLiveAdapter = HomeChannelAdapter(::playChannel, ::toggleFavorite)
         homeLiveSection = homeSection("Tus canales", homeLiveAdapter, "Ordenar") {
             startActivity(Intent(this, PersonalizationActivity::class.java))
@@ -636,8 +643,9 @@ class MainActivity : ComponentActivity() {
     private fun homeSection(
         title: String,
         adapter: RecyclerView.Adapter<*>,
-        moreLabel: String,
-        onMore: () -> Unit,
+        moreLabel: String? = null,
+        rowHeight: Int? = null,
+        onMore: () -> Unit = {},
     ): LinearLayout {
         val compact = resources.configuration.screenHeightDp <= 600
         val section = LinearLayout(this).apply {
@@ -649,7 +657,7 @@ class MainActivity : ComponentActivity() {
         val heading = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
         heading.addView(label(title, if (compact) 20f else 23f).apply { typeface = Typeface.DEFAULT_BOLD },
             LinearLayout.LayoutParams(0, dp(42), 1f))
-        heading.addView(action(moreLabel).apply {
+        if (moreLabel != null) heading.addView(action(moreLabel).apply {
             textSize = 13f
             setOnClickListener { onMore() }
         }, LinearLayout.LayoutParams(dp(140), dp(36)))
@@ -663,12 +671,13 @@ class MainActivity : ComponentActivity() {
             clipToPadding = false
             setPadding(dp(2), 0, dp(16), 0)
             setHasFixedSize(true)
-        }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(if (compact) 186 else 208)))
+        }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(rowHeight ?: if (compact) 186 else 208)))
         return section
     }
 
     private fun showHome() {
         showingCatalog = false
+        refreshContinueWatching()
         homeScroll.visibility = View.VISIBLE
         catalogContent.visibility = View.GONE
         status.visibility = View.GONE
@@ -757,6 +766,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun refreshHome() {
+        refreshContinueWatching()
         val all = visiblePlaylistChannels()
         val favorites = preferences.favorites
         val newFeaturedEvents = buildFeaturedEvents(all)
@@ -782,6 +792,48 @@ class MainActivity : ComponentActivity() {
         homeEmptyMessage.visibility = if (all.isEmpty()) View.VISIBLE else View.GONE
         homeLiveSection.visibility = if (all.isEmpty()) View.GONE else View.VISIBLE
         homeGroupedSections.visibility = if (all.isEmpty() || preferences.homeVisibleGroups.isEmpty()) View.GONE else View.VISIBLE
+    }
+
+    private fun refreshContinueWatching() {
+        val entries = vodHistory.recent(repository.activePlaylistSource()?.id)
+        continueAdapter.submit(entries)
+        continueSection.visibility = if (entries.isEmpty()) View.GONE else View.VISIBLE
+    }
+
+    private fun showRemoveContinueWatching() {
+        val entries = vodHistory.recent(repository.activePlaylistSource()?.id)
+        if (entries.isEmpty()) return
+        AlertDialog.Builder(this)
+            .setTitle("Quitar de Continuar viendo")
+            .setItems(entries.map { "${it.title} · ${vodTime(it.positionMs)}" }.toTypedArray()) { _, index ->
+                val entry = entries[index]
+                AlertDialog.Builder(this)
+                    .setTitle("Quitar título")
+                    .setMessage("Se borrará la posición guardada de «${entry.title}».")
+                    .setNegativeButton("Cancelar", null)
+                    .setPositiveButton("Quitar") { _, _ ->
+                        vodHistory.remove(entry.sourceId, entry.id)
+                        refreshContinueWatching()
+                        if (continueSection.visibility != View.VISIBLE) watchButton.requestFocus()
+                    }
+                    .show()
+            }
+            .setNegativeButton("Cancelar", null)
+            .show()
+    }
+
+    private fun openContinueWatching(entry: dev.openstream.tv.data.VodHistory.Entry) {
+        val url = vodHistory.playbackUrl(entry)
+        if (url == null) {
+            Toast.makeText(this, "Abre este título desde el catálogo para continuar.", Toast.LENGTH_SHORT).show()
+            return
+        }
+        startActivity(Intent(this, PlayerActivity::class.java)
+            .putExtra(PlayerActivity.EXTRA_SOURCE_ID, entry.sourceId)
+            .putExtra(PlayerActivity.EXTRA_CHANNEL_ID, entry.id)
+            .putExtra(PlayerActivity.EXTRA_VOD_TITLE, entry.title)
+            .putExtra(PlayerActivity.EXTRA_VOD_SUBTITLE_ID, entry.subtitleId)
+            .putExtra(PlayerActivity.EXTRA_VOD_URL, url))
     }
 
     private fun buildFeaturedEvents(channels: List<Channel>): List<FeaturedEvent> {

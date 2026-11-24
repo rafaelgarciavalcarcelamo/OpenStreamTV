@@ -22,8 +22,8 @@ android {
     productFlavors {
         create("tv") {
             dimension = "device"
-            versionCode = 24
-            versionName = "0.17.0-fire-tv"
+            versionCode = 25
+            versionName = "0.17.1-fire-tv"
             buildConfigField("boolean", "IS_MOBILE", "false")
         }
         create("mobile") {

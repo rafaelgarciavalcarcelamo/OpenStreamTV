@@ -1,5 +1,6 @@
 package dev.openstream.tv.ui
 
+import android.app.AlertDialog
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
@@ -31,6 +32,7 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
+import androidx.media3.common.TrackSelectionOverride
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.HttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
@@ -46,10 +48,12 @@ import dev.openstream.tv.data.DecoderPreference
 import dev.openstream.tv.data.HomeChannelRanker
 import dev.openstream.tv.data.Preferences
 import dev.openstream.tv.data.ResizeMode
+import dev.openstream.tv.data.VodHistory
 import dev.openstream.tv.local.LocalControlServer
 import dev.openstream.tv.player.PlaybackDiagnostics
 import dev.openstream.tv.player.PlayerFactory
 import dev.openstream.tv.player.RecoveryDelayPolicy
+import java.util.Locale
 
 @androidx.annotation.OptIn(markerClass = [UnstableApi::class])
 class PlayerActivity : ComponentActivity() {
@@ -69,6 +73,15 @@ class PlayerActivity : ComponentActivity() {
     private var playbackSourceId: String? = null
     private var touchControls: LinearLayout? = null
     private var playPause: Button? = null
+    private val vodHistory by lazy { VodHistory(this) }
+    private var vodPositionMs = 0L
+    private var vodLastSavedMs = 0L
+    private var vodDurationMs = C.TIME_UNSET
+    private var vodStarted = false
+    private var vodCompleted = false
+    private var resumeDialog: AlertDialog? = null
+    private var vodErrorDialog: AlertDialog? = null
+    private val subtitleId get() = intent.getStringExtra(EXTRA_VOD_SUBTITLE_ID) ?: channels.getOrNull(index)?.id
     private var playlistReceiverRegistered = false
     private var player: ExoPlayer? = null
     private var channels = emptyList<Channel>()
@@ -112,6 +125,7 @@ class PlayerActivity : ComponentActivity() {
         override fun onLost(network: Network) {
             retryHandler.post {
                 if (!isNetworkAvailable()) {
+                    player?.let(::captureVodPosition)
                     wasOffline = true
                     networkState = "sin conexión"
                     hint.text = "Sin conexión · esperando a que vuelva la red…"
@@ -126,7 +140,9 @@ class PlayerActivity : ComponentActivity() {
                     wasOffline = false
                     networkState = "conectada"
                     cancelRecovery()
-                    restartStream("Red recuperada · reconectando…")
+                    if (vodErrorDialog == null && (!isVod || !vodCompleted)) {
+                        restartStream("Red recuperada · reconectando…")
+                    }
                 }
             }
         }
@@ -148,6 +164,10 @@ class PlayerActivity : ComponentActivity() {
                     }
                 } else if (current.isPlaying) {
                     val position = current.currentPosition
+                    if (isVod) {
+                        captureVodPosition(current)
+                        if (kotlin.math.abs(vodPositionMs - vodLastSavedMs) >= 30_000) persistVodProgress()
+                    }
                     stagnantChecks = if (lastPlaybackPositionMs != C.TIME_UNSET && position - lastPlaybackPositionMs < MIN_PROGRESS_MS) stagnantChecks + 1 else 0
                     lastPlaybackPositionMs = position
                     if (stagnantChecks >= MAX_STAGNANT_CHECKS) {
@@ -172,6 +192,8 @@ class PlayerActivity : ComponentActivity() {
         repository = AppRepository(this)
         val savedSource = repository.activePlaylistSource()
         playbackSourceId = intent.getStringExtra(EXTRA_SOURCE_ID) ?: savedSource?.id
+        vodPositionMs = savedInstanceState?.getLong(EXTRA_VOD_POSITION) ?: 0L
+        vodStarted = savedInstanceState?.getBoolean("vod_started") ?: false
         val vodUrl = intent.getStringExtra(EXTRA_VOD_URL)
         val channelId = savedInstanceState?.getString(EXTRA_CHANNEL_ID) ?: intent.getStringExtra(EXTRA_CHANNEL_ID)
         val selectedUrl = intent.getStringExtra(EXTRA_LIVE_URL)
@@ -215,6 +237,9 @@ class PlayerActivity : ComponentActivity() {
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
+        player?.let(::captureVodPosition)
+        outState.putLong(EXTRA_VOD_POSITION, vodPositionMs)
+        outState.putBoolean("vod_started", vodStarted)
         outState.putString(EXTRA_CHANNEL_ID, channels.getOrNull(index)?.id)
         super.onSaveInstanceState(outState)
     }
@@ -332,6 +357,10 @@ class PlayerActivity : ComponentActivity() {
             control("+", "Canal siguiente") { play(index + 1) }
             control("Canales", "Abrir selector de canales", 1.6f) { showGuide() }
         }
+        if (isVod) {
+            control("Audio", "Cambiar idioma de audio") { showTracks(C.TRACK_TYPE_AUDIO) }
+            control("Subtítulos", "Cambiar subtítulos", 1.35f) { showTracks(C.TRACK_TYPE_TEXT) }
+        }
         control("ⓘ", "Diagnóstico de reproducción") { toggleDiagnostics() }
         if (!BuildConfig.IS_MOBILE) {
             control("Ajustes", "Ajustes del reproductor", 1.4f) {
@@ -345,6 +374,62 @@ class PlayerActivity : ComponentActivity() {
             controls.visibility = if (controls.visibility == View.VISIBLE) View.GONE else View.VISIBLE
             if (controls.visibility == View.VISIBLE) showBanner(autoHide = true)
         }
+    }
+
+    private fun showTracks(type: Int) {
+        val current = player ?: return
+        val subtitles = type == C.TRACK_TYPE_TEXT
+        val tracks = current.currentTracks.groups
+            .filter { it.type == type }
+            .flatMap { group ->
+                (0 until group.length).filter(group::isTrackSupported).map { group to it }
+            }
+        val dialog = AlertDialog.Builder(this).setTitle(if (subtitles) "Subtítulos" else "Idioma de audio")
+            .setNegativeButton("Cerrar", null)
+        if (tracks.isEmpty()) {
+            dialog.setMessage(if (subtitles) "No hay pistas de subtítulos disponibles." else "Las pistas de audio aún no están disponibles.").show()
+            return
+        }
+        val locale = Locale.forLanguageTag("es")
+        val labels = tracks.map { (group, track) ->
+            val format = group.getTrackFormat(track)
+            val language = format.language?.takeUnless { it.isBlank() || it.equals("und", true) }
+                ?.let { Locale.forLanguageTag(it.replace('_', '-')).getDisplayLanguage(locale) }
+                ?.takeIf(String::isNotBlank)
+            listOfNotNull(language, format.label?.takeIf { it.isNotBlank() && !it.equals(language, true) })
+                .joinToString(" · ").ifBlank { "Idioma sin identificar" }
+        }
+        val counts = labels.groupingBy { it }.eachCount()
+        val defaults = if (subtitles) listOf("Automático · preferencia de la app", "Desactivados") else listOf("Automático · preferencia de la app")
+        val options = defaults + labels.mapIndexed { index, label ->
+            if (counts.getValue(label) > 1 || label == "Idioma sin identificar") "$label · pista ${index + 1}" else label
+        }
+        val selectedTrack = tracks.indexOfFirst { (group, track) -> group.isTrackSelected(track) }
+        val selected = if (selectedTrack >= 0) selectedTrack + defaults.size
+            else if (subtitles && C.TRACK_TYPE_TEXT in current.trackSelectionParameters.disabledTrackTypes) 1 else 0
+        dialog.setSingleChoiceItems(options.toTypedArray(), selected) { picker, choice ->
+            if (player === current) {
+                val track = tracks.getOrNull(choice - defaults.size)
+                current.trackSelectionParameters = current.trackSelectionParameters.buildUpon().apply {
+                    clearOverridesOfType(type)
+                    if (subtitles) {
+                        setTrackTypeDisabled(type, choice == 1)
+                        setPreferredTextLanguage(preferences.preferredSubtitleLanguage.takeIf(String::isNotBlank))
+                    }
+                    track?.let { (group, trackIndex) ->
+                        setOverrideForType(TrackSelectionOverride(group.mediaTrackGroup, trackIndex))
+                    }
+                }.build()
+                val source = playbackSourceId
+                val id = subtitleId
+                if (subtitles && source != null && id != null) {
+                    val language = if (choice == 1) VodHistory.SUBTITLES_OFF
+                        else track?.let { (group, trackIndex) -> group.getTrackFormat(trackIndex).language ?: "und" }
+                    vodHistory.setSubtitle(source, id, language)
+                }
+            }
+            picker.dismiss()
+        }.show()
     }
 
     private fun showTvControls() {
@@ -362,10 +447,79 @@ class PlayerActivity : ComponentActivity() {
     private fun togglePlayback() {
         player?.let {
             if (isVod && it.playbackState == Player.STATE_ENDED) {
+                vodCompleted = false
+                vodLastSavedMs = 0
                 it.seekTo(0)
                 it.play()
             } else it.playWhenReady = !it.playWhenReady
         }
+    }
+
+    private fun promptResume() {
+        val source = playbackSourceId
+        val channel = channels.getOrNull(index)
+        val entry = if (source != null && channel != null) vodHistory.find(source, channel.id) else null
+        fun startAt(positionMs: Long) {
+            vodStarted = true
+            vodPositionMs = positionMs
+            vodLastSavedMs = positionMs
+            play(index)
+        }
+        if (entry == null) {
+            startAt(0)
+            return
+        }
+        resumeDialog = AlertDialog.Builder(this)
+            .setTitle("Continuar viendo")
+            .setMessage("Posición guardada: ${vodTime(entry.positionMs)}")
+            .setPositiveButton("Continuar") { _, _ -> startAt(entry.positionMs) }
+            .setNegativeButton("Empezar de nuevo") { _, _ ->
+                forgetVodProgress()
+                startAt(0)
+            }
+            .setOnCancelListener { finish() }
+            .show()
+    }
+
+    private fun captureVodPosition(current: Player) {
+        if (!isVod || !vodStarted || vodCompleted || current.playbackState != Player.STATE_READY ||
+            !current.isCurrentMediaItemSeekable) return
+        vodPositionMs = current.currentPosition.coerceAtLeast(0)
+        vodDurationMs = current.duration
+    }
+
+    private fun persistVodProgress() {
+        if (!isVod || !vodStarted || vodCompleted || vodPositionMs < VodHistory.MIN_POSITION_MS ||
+            vodPositionMs == vodLastSavedMs) return
+        val source = playbackSourceId ?: return
+        val channel = channels.getOrNull(index) ?: return
+        val subtitle = subtitleId ?: channel.id
+        val position = if (vodDurationMs > 0) vodPositionMs.coerceAtMost(vodDurationMs) else vodPositionMs
+        vodHistory.save(source, channel.id, channel.name, channel.url, subtitle, position)
+        vodLastSavedMs = vodPositionMs
+    }
+
+    private fun forgetVodProgress() {
+        val source = playbackSourceId ?: return
+        val channel = channels.getOrNull(index) ?: return
+        vodHistory.remove(source, channel.id)
+    }
+
+    private fun showVodRecovery(message: String) {
+        cancelRecovery()
+        persistVodProgress()
+        hint.text = message
+        showBanner()
+        vodErrorDialog = AlertDialog.Builder(this)
+            .setTitle("Se interrumpió la reproducción")
+            .setMessage("Puedes reintentar desde ${vodTime(vodPositionMs)}.")
+            .setPositiveButton("Reintentar") { _, _ ->
+                retryAttempt = 0
+                restartStream("Reconectando…")
+            }
+            .setNegativeButton("Volver") { _, _ -> finish() }
+            .setOnCancelListener { finish() }
+            .show().apply { setOnDismissListener { vodErrorDialog = null } }
     }
 
     override fun onStart() {
@@ -436,6 +590,7 @@ class PlayerActivity : ComponentActivity() {
                         bufferingSinceMs = 0
                         cancelRecovery()
                         scheduleStableMark()
+                        captureVodPosition(it)
                         hasBeenReady = true
                         hint.text = when {
                             isVod -> "OK: controles de reproducción"
@@ -454,6 +609,9 @@ class PlayerActivity : ComponentActivity() {
                         showBanner()
                     } else if (playbackState == Player.STATE_ENDED) {
                         if (isVod) {
+                            vodCompleted = true
+                            vodPositionMs = 0
+                            forgetVodProgress()
                             hint.text = "Reproducción finalizada"
                             showBanner(autoHide = true)
                         } else if (!tryNextFallback("El directo terminó · probando alternativa…")) {
@@ -464,7 +622,7 @@ class PlayerActivity : ComponentActivity() {
             })
             playerView.player = it
         }
-        play(index)
+        if (isVod && !vodStarted) promptResume() else play(index)
         retryHandler.postDelayed(healthWatchdog, WATCHDOG_INTERVAL_MS)
     }
 
@@ -513,7 +671,18 @@ class PlayerActivity : ComponentActivity() {
             builder.setMimeType(MimeTypes.APPLICATION_M3U8)
         }
         player?.apply {
-            setMediaItem(builder.build())
+            if (isVod) {
+                val source = playbackSourceId
+                val id = subtitleId
+                val subtitle = if (source != null && id != null) vodHistory.subtitle(source, id) else null
+                if (subtitle != null) {
+                    trackSelectionParameters = trackSelectionParameters.buildUpon()
+                        .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, subtitle == VodHistory.SUBTITLES_OFF)
+                        .apply { if (subtitle != VodHistory.SUBTITLES_OFF) setPreferredTextLanguage(subtitle) }
+                        .build()
+                }
+                setMediaItem(builder.build(), vodPositionMs)
+            } else setMediaItem(builder.build())
             prepare()
             playWhenReady = preferences.autoplay
         }
@@ -552,6 +721,10 @@ class PlayerActivity : ComponentActivity() {
     }
 
     override fun onStop() {
+        player?.let(::captureVodPosition)
+        persistVodProgress()
+        resumeDialog?.dismiss()
+        vodErrorDialog?.dismiss()
         if (playlistReceiverRegistered) {
             unregisterReceiver(playlistReceiver)
             playlistReceiverRegistered = false
@@ -611,6 +784,10 @@ class PlayerActivity : ComponentActivity() {
     }
 
     private fun scheduleRecovery(message: String, unauthorized: Boolean = false, immediate: Boolean = false) {
+        if (isVod && (vodErrorDialog != null || unauthorized || !preferences.autoReconnect || retryAttempt >= VOD_MAX_RETRIES)) {
+            if (vodErrorDialog == null) showVodRecovery(message)
+            return
+        }
         if (!preferences.autoReconnect || player == null || channels.isEmpty()) {
             hint.text = message
             return
@@ -742,9 +919,12 @@ class PlayerActivity : ComponentActivity() {
         bufferingSinceMs = SystemClock.elapsedRealtime()
         stagnantChecks = 0
         lastPlaybackPositionMs = C.TIME_UNSET
-        current.setMediaItem(item, true)
+        if (isVod) {
+            captureVodPosition(current)
+            current.setMediaItem(item, vodPositionMs)
+        } else current.setMediaItem(item, true)
         current.prepare()
-        if (!BuildConfig.IS_MOBILE) current.playWhenReady = true
+        if (!BuildConfig.IS_MOBILE && !isVod) current.playWhenReady = true
     }
 
     private fun tryNextFallback(message: String): Boolean {
@@ -796,6 +976,9 @@ class PlayerActivity : ComponentActivity() {
         const val EXTRA_SOURCE_ID = "source_id"
         const val EXTRA_VOD_URL = "vod_url"
         const val EXTRA_VOD_TITLE = "vod_title"
+        const val EXTRA_VOD_SUBTITLE_ID = "vod_subtitle_id"
+        private const val EXTRA_VOD_POSITION = "vod_position"
+        private const val VOD_MAX_RETRIES = 3
         const val EXTRA_FALLBACK_CHANNEL_IDS = "fallback_channel_ids"
         private const val WATCHDOG_INTERVAL_MS = 5_000L
         private const val MAX_BUFFERING_MS = 40_000L

@@ -320,6 +320,8 @@ class VodActivity : ComponentActivity() {
             startActivity(Intent(this, PlayerActivity::class.java)
                 .putExtra(PlayerActivity.EXTRA_CHANNEL_ID, entry.id)
                 .putExtra(PlayerActivity.EXTRA_VOD_TITLE, entry.name)
+                .putExtra(PlayerActivity.EXTRA_VOD_SUBTITLE_ID, series?.id ?: entry.id)
+                .putExtra(PlayerActivity.EXTRA_SOURCE_ID, activeSource?.id)
                 .putExtra(PlayerActivity.EXTRA_VOD_URL, entry.url))
         }
     }

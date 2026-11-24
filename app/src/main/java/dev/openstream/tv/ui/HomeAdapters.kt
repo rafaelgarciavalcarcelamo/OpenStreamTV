@@ -13,10 +13,12 @@ import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
+import android.widget.Button
 import androidx.recyclerview.widget.RecyclerView
 import dev.openstream.tv.R
 import dev.openstream.tv.data.BoundedStreams
 import dev.openstream.tv.data.Channel
+import dev.openstream.tv.data.VodHistory
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.ByteArrayOutputStream
@@ -29,6 +31,43 @@ data class HomeChannelMetadata(
     val quality: String = "Buena",
     val qualityLevel: Int = 2,
 )
+
+internal class ContinueWatchingAdapter(private val open: (VodHistory.Entry) -> Unit) :
+    RecyclerView.Adapter<ContinueWatchingAdapter.Holder>() {
+    private var entries = emptyList<VodHistory.Entry>()
+
+    fun submit(items: List<VodHistory.Entry>) {
+        if (items == entries) return
+        entries = items
+        notifyDataSetChanged()
+    }
+
+    override fun getItemCount() = entries.size
+
+    override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): Holder {
+        val context = parent.context
+        val button = context.action("").apply {
+            gravity = Gravity.START or Gravity.CENTER_VERTICAL
+            maxLines = 3
+            ellipsize = TextUtils.TruncateAt.END
+            layoutParams = RecyclerView.LayoutParams(context.dp(236), context.dp(80)).apply {
+                marginEnd = context.dp(8)
+            }
+        }
+        return Holder(button).also { holder ->
+            button.setOnClickListener {
+                entries.getOrNull(holder.bindingAdapterPosition)?.let(open)
+            }
+        }
+    }
+
+    override fun onBindViewHolder(holder: Holder, position: Int) {
+        val entry = entries[position]
+        holder.button.text = "${entry.title}\n${vodTime(entry.positionMs)}"
+    }
+
+    class Holder(val button: Button) : RecyclerView.ViewHolder(button)
+}
 
 /** Poster-shaped channel cards used only on the home screen. The full catalog stays in ChannelAdapter. */
 class HomeChannelAdapter(
